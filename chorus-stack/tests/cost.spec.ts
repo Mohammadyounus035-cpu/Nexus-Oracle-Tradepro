@@ -14,16 +14,14 @@ describe("assignment domain cost", () => {
     expect(edgeCost(item, sameRegionNode)).toBeLessThan(edgeCost(item, otherRegionNode));
   });
 
-  it("still allows cross-region assignment when same-region capacity is unavailable", () => {
+  it("prefers same-region nodes but allows penalized fallback when needed", () => {
     const item: Item = { id: "i1", risk: 0.5, region: "us" };
-    const sameRegionNodeUnavailable: Node = {
-      id: "n2",
-      capacity: 1,
-      used: 1,
-      region: "us"
-    };
+    const sameRegionNode: Node = { id: "n2", capacity: 1, used: 0, region: "us" };
     const otherRegionNode: Node = { id: "n1", capacity: 1, used: 0, region: "eu" };
 
+    expect(edgeCost(item, sameRegionNode)).toBeLessThan(edgeCost(item, otherRegionNode));
+
+    const sameRegionNodeUnavailable: Node = { ...sameRegionNode, used: 1 };
     expect(canAssign(item, sameRegionNodeUnavailable)).toBe(false);
     expect(canAssign(item, otherRegionNode)).toBe(true);
     expect(Number.isFinite(edgeCost(item, otherRegionNode))).toBe(true);

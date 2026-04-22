@@ -26,25 +26,37 @@ describe("assignment engine", () => {
     ]);
   });
 
+  it("produces identical output regardless of item and node order", () => {
+    const inputA = {
+      items: [
+        { id: "i2", risk: 7, priority: 3, confidence: 0.2 },
+        { id: "i1", risk: 7, priority: 3, confidence: 0.2 },
+        { id: "i3", risk: 0.5, priority: 1, confidence: 0.5 }
+      ] satisfies WorkItem[],
+      nodes: [
+        { nodeId: "n2", capacity: 1, maxRisk: 7 },
+        { nodeId: "n3", capacity: 1, maxRisk: 9 },
+        { nodeId: "n1", capacity: 1, maxRisk: 7 }
+      ] satisfies NodeCapacity[]
+    };
 
-  it("remains deterministic across repeated identical runs", () => {
-    const items: WorkItem[] = [
-      { id: "i1", risk: 0.5, priority: 1, confidence: 0.5 },
-      { id: "i2", risk: 7, priority: 3, confidence: 0.2 },
-      { id: "i3", risk: 7, priority: 3, confidence: 0.2 }
-    ];
+    const inputB = {
+      items: [
+        { id: "i3", risk: 0.5, priority: 1, confidence: 0.5 },
+        { id: "i1", risk: 7, priority: 3, confidence: 0.2 },
+        { id: "i2", risk: 7, priority: 3, confidence: 0.2 }
+      ] satisfies WorkItem[],
+      nodes: [
+        { nodeId: "n1", capacity: 1, maxRisk: 7 },
+        { nodeId: "n2", capacity: 1, maxRisk: 7 },
+        { nodeId: "n3", capacity: 1, maxRisk: 9 }
+      ] satisfies NodeCapacity[]
+    };
 
-    const nodes: NodeCapacity[] = [
-      { nodeId: "n1", capacity: 1, maxRisk: 7 },
-      { nodeId: "n2", capacity: 1, maxRisk: 7 },
-      { nodeId: "n3", capacity: 1, maxRisk: 9 }
-    ];
+    const a = constrainedBatchAssign(inputA.items, inputA.nodes, "risk_limited");
+    const b = constrainedBatchAssign(inputB.items, inputB.nodes, "risk_limited");
 
-    const baseline = constrainedBatchAssign(items, nodes, "risk_limited");
-
-    for (let i = 0; i < 5; i += 1) {
-      expect(constrainedBatchAssign(items, nodes, "risk_limited")).toEqual(baseline);
-    }
+    expect(a).toEqual(b);
   });
 
   it("is deterministic when scored values tie", () => {
