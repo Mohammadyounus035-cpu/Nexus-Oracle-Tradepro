@@ -106,6 +106,18 @@ Set them before starting the web or use an .env approach in your dev environment
 - TypeScript path resolution errors
   - The root `tsconfig.json` contains path mappings for `@omega/engine` and `@omega/types`. If you open subprojects in an editor, make sure the editor workspace recognizes the root TS config, or adjust local imports to relative paths.
 
+- `curl: (56) CONNECT tunnel ... 403 Forbidden` when checking a Codex task URL
+  - This is typically a proxy/auth/network access issue, not a code regression.
+  - Confirm the task URL is complete (truncated browser links can fail immediately).
+  - Check for forced proxy variables:
+    - `env | grep -i proxy`
+  - Compare direct header checks:
+    - `curl -I https://chatgpt.com`
+    - `curl -I https://chatgpt.com/codex/cloud/tasks/<task_id>`
+  - If your environment allows bypassing proxy variables, test:
+    - `HTTPS_PROXY= HTTP_PROXY= ALL_PROXY= curl -I https://chatgpt.com/codex/cloud/tasks/<task_id>`
+  - Many `chatgpt.com/codex/cloud/tasks/...` links are browser-session URLs and may require interactive authentication; prefer opening them in a signed-in browser or using the actual API/tool endpoint if available.
+
 ---
 
 ## Development suggestions / next steps
