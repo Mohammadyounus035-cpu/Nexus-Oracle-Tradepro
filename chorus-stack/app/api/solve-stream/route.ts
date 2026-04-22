@@ -92,8 +92,7 @@ export async function GET(request: Request): Promise<Response> {
     headers: {
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no"
+      Connection: "keep-alive"
     }
   });
 }
