@@ -1,0 +1,22 @@
+{
+  "name": "hfce",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Harmonic Field Compute Engine",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc --noEmit -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "sim:single": "tsx examples/single-node.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.2.0"
+  }
+}
