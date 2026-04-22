@@ -9,7 +9,6 @@ Create `app/api/solve-stream/route.ts` and keep:
 - `export const runtime = "edge"`
 - `Content-Type: text/event-stream`
 - `Cache-Control: no-cache, no-transform`
-- `X-Accel-Buffering: no`
 
 ## Frontend subscription
 
