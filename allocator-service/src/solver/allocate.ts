@@ -4,6 +4,17 @@ import { normalizeRequest } from "../domain/normalize";
 import { sha256Json } from "../lib/hash";
 import { MinCostMaxFlow } from "./mcmf";
 
+/**
+ * Compute a min-cost assignment of items to nodes respecting node capacities and item-node compatibility.
+ *
+ * @param input - The allocation request containing items and nodes to be assigned
+ * @returns An object with:
+ *   - `assignments`: a mapping from item id to assigned node id,
+ *   - `flow`: total number of items assigned,
+ *   - `cost`: total cost of the computed assignments,
+ *   - `deterministic`: always `true`,
+ *   - `requestHash`: SHA-256 hash of the normalized request
+ */
 export function allocate(input: AllocateRequest): AllocateResponse {
   const req = normalizeRequest(input);
   const requestHash = sha256Json(req);
