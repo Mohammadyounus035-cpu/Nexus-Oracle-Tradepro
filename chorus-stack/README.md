@@ -23,3 +23,4 @@ python3 simulations/rtts_simulation.py
 ## Deployment note
 
 - For Vercel-compatible realtime allocator progress streaming (SSE), see `docs/VERCEL_SSE_MIGRATION.md`.
+- For safe Browserbase session bootstrapping in Python/Node without hardcoding credentials, see `docs/BROWSERBASE_QUICKSTART.md`.
