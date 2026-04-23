@@ -9,7 +9,7 @@ This runnable starter organizes the Control Kernel and RTTS simulation component
 - `packages/assignment-engine`: constrained batch assignment algorithm.
 - `packages/chorus-core`, `packages/sap-engine`, `packages/rtts-evidence`: interface contracts.
 - `tests`: lightweight Control Kernel spec.
-- `simulations`: baseline, overload, and survivor-bias inversion simulation scenarios.
+- `simulations`: baseline RTTS scenarios plus a medical HITL threshold/cost sweep simulator.
 
 ## Quick start
 
@@ -18,6 +18,7 @@ npm install
 npm test
 npm run build
 python3 simulations/rtts_simulation.py
+python3 simulations/medical_hitl_threshold_simulation.py
 ```
 
 ## Deployment note
