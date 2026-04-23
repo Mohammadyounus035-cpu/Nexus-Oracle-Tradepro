@@ -9,6 +9,21 @@ State-authoritative, deterministic core engine for Nexus behaviors.
 - `npm run start` - Run built demo from `dist`
 - `npm test` - Execute tests with Vitest
 - `npm run analyze` - Run full graph analysis and export `analysis.json`
+- `./run.sh` - Install deps, regenerate `analysis.json`, write `analysis.sha256`, and verify checksum
+
+## Reproducible artifact verification
+
+```bash
+cd nexus-core
+./run.sh
+sha256sum -c analysis.sha256
+```
+
+Optional provenance verification:
+
+```bash
+gpg --verify analysis.sha256.asc analysis.sha256
+```
 
 ## Unified analysis pipeline
 
