@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mystic Map v1.0</title>
+  <meta name="description" content="Mystic Map — symbolic system map by Mohammad. CC BY-NC 4.0">
+  <style>
+    :root {
+      --bg: #0d0f14;
+      --fg: #e6e8eb;
+      --muted: #9aa4b2;
+      --accent: #7aa2f7;
+      --card: #161a22;
+      --border: #222733;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      line-height: 1.6;
+    }
+    header {
+      padding: 3rem 1.5rem 2rem;
+      border-bottom: 1px solid var(--border);
+      text-align: center;
+    }
+    header h1 { margin: 0 0 .5rem; font-size: 2.5rem; }
+    header p { margin: .25rem 0; color: var(--muted); }
+    .badge {
+      display: inline-block;
+      padding: .25rem .6rem;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      font-size: .85rem;
+      color: var(--muted);
+      margin: .25rem;
+    }
+    main { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem; }
+    section { margin-bottom: 3rem; }
+    h2 {
+      font-size: 1.5rem;
+      margin: 0 0 1rem;
+      padding-bottom: .5rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 1rem;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      text-align: center;
+    }
+    .card img, .card object {
+      width: 100%;
+      height: 120px;
+      object-fit: contain;
+      margin-bottom: .5rem;
+    }
+    .card code {
+      font-size: .75rem;
+      color: var(--muted);
+      word-break: break-all;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .9rem;
+    }
+    th, td {
+      text-align: left;
+      padding: .6rem .75rem;
+      border-bottom: 1px solid var(--border);
+    }
+    th { color: var(--muted); font-weight: 500; }
+    td code { font-size: .8rem; color: var(--muted); }
+    .downloads a {
+      display: inline-block;
+      margin: .25rem .5rem .25rem 0;
+      padding: .5rem .9rem;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--fg);
+      text-decoration: none;
+    }
+    .downloads a:hover { border-color: var(--accent); color: var(--accent); }
+    footer {
+      text-align: center;
+      padding: 2rem 1.5rem;
+      color: var(--muted);
+      font-size: .85rem;
+      border-top: 1px solid var(--border);
+    }
+    a { color: var(--accent); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  </style>
+</head>
+<body>
+  <header id="hero">
+    <h1>Mystic Map</h1>
+    <p>Loading manifest…</p>
+  </header>
+
+  <main>
+    <section id="downloads">
+      <h2>Primary Exports</h2>
+      <div class="downloads" id="download-links"></div>
+    </section>
+
+    <section id="creatures">
+      <h2>Creature Archetypes</h2>
+      <div class="grid" id="creature-grid"></div>
+    </section>
+
+    <section id="files">
+      <h2>File Index</h2>
+      <table id="file-table">
+        <thead><tr><th>Path</th><th>Size</th><th>SHA-256</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section id="integrity">
+      <h2>Integrity Verification</h2>
+      <p>All files are tracked with SHA-256 hashes in <code>manifest.json</code>. Verify your copy:</p>
+      <pre class="mono" style="background:var(--card);padding:1rem;border-radius:6px;overflow:auto">jq -r '.files[] | "\(.sha256)  \(.path)"' manifest.json > checksums.txt
+sha256sum -c checksums.txt</pre>
+    </section>
+  </main>
+
+  <footer id="footer">
+    Loading…
+  </footer>
+
+  <script>
+    async function loadManifest() {
+      const res = await fetch('manifest.json');
+      const manifest = await res.json();
+
+      // Hero
+      document.getElementById('hero').innerHTML = `
+        <h1>${manifest.project} v${manifest.version}</h1>
+        <p>by ${manifest.author}</p>
+        <div>
+          <span class="badge">${manifest.license}</span>
+          <span class="badge">${manifest.file_count} files</span>
+          <span class="badge">Generated ${new Date(manifest.generated).toLocaleDateString()}</span>
+        </div>
+      `;
+
+      // Downloads - grab key exports
+      const keyExports = [
+        'exports/composition_6000px.jpg',
+        'exports/composition_6000px.tif',
+        'exports/composition_high_contrast.png',
+        'source/master_composition_v1.0.svg',
+        'docs/legend_onepage.pdf'
+      ];
+      const downloads = document.getElementById('download-links');
+      keyExports.forEach(path => {
+        const file = manifest.files.find(f => f.path === path);
+        if (file) {
+          const name = path.split('/').pop();
+          downloads.innerHTML += `<a href="${path}" download>${name}</a>`;
+        }
+      });
+
+      // Creatures
+      const creatureFiles = manifest.files.filter(f => f.path.startsWith('creatures/') && f.path.endsWith('.svg'));
+      const creatureGrid = document.getElementById('creature-grid');
+      creatureFiles.forEach(f => {
+        const name = f.path.split('/').pop().replace('.svg', '');
+        creatureGrid.innerHTML += `
+          <div class="card">
+            <object data="${f.path}" type="image/svg+xml"></object>
+            <div><strong>${name}</strong></div>
+            <code>${(f.size/1024).toFixed(1)} KB</code>
+          </div>
+        `;
+      });
+
+      // File table
+      const tbody = document.querySelector('#file-table tbody');
+      manifest.files.sort((a,b) => a.path.localeCompare(b.path)).forEach(f => {
+        tbody.innerHTML += `
+          <tr>
+            <td><a href="${f.path}">${f.path}</a></td>
+            <td>${(f.size/1024).toFixed(1)} KB</td>
+            <td><code>${f.sha256.substring(0,16)}…</code></td>
+          </tr>
+        `;
+      });
+
+      // Footer
+      document.getElementById('footer').innerHTML = `
+        ${manifest.project} v${manifest.version} by ${manifest.author} · ${manifest.license}<br>
+        Generated ${manifest.generated} · <a href="manifest.json">manifest.json</a>
+      `;
+    }
+    loadManifest().catch(e => {
+      document.body.innerHTML = `<p style="padding:2rem;color:#f77">Failed to load manifest.json: ${e}</p>`;
+    });
+  </script>
+</body>
+</html>
