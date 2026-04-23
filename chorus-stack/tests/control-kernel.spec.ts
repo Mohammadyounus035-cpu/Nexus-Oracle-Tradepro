@@ -21,84 +21,134 @@ describe("Control Kernel", () => {
   });
 });
 
-describe("Control Kernel mode thresholds", () => {
-  it("enters containment when confidenceDrift exceeds 0.4", () => {
-    const result = evaluateMode({ queueDepth: 50, contaminationRate: 0.1, confidenceDrift: 0.41 });
-    expect(result.mode).toBe("containment");
-    expect(result.policy).toBe("risk_limited");
-  });
-
-  it("enters containment when contaminationRate is exactly at boundary 0.3+", () => {
-    const result = evaluateMode({ queueDepth: 10, contaminationRate: 0.31, confidenceDrift: 0.0 });
-    expect(result.mode).toBe("containment");
-    expect(result.policy).toBe("risk_limited");
-  });
-
-  it("does not trigger containment at exactly contaminationRate 0.3 (boundary is exclusive)", () => {
-    const result = evaluateMode({ queueDepth: 10, contaminationRate: 0.3, confidenceDrift: 0.0 });
-    expect(result.mode).not.toBe("containment");
-  });
-
-  it("enters degraded mode when only queueDepth exceeds 120", () => {
-    const result = evaluateMode({ queueDepth: 121, contaminationRate: 0.05, confidenceDrift: 0.05 });
-    expect(result.mode).toBe("degraded");
-  });
-
-  it("enters degraded mode when only contaminationRate exceeds 0.15", () => {
-    const result = evaluateMode({ queueDepth: 50, contaminationRate: 0.16, confidenceDrift: 0.05 });
-    expect(result.mode).toBe("degraded");
-  });
-
-  it("enters degraded mode when only confidenceDrift exceeds 0.2", () => {
-    const result = evaluateMode({ queueDepth: 50, contaminationRate: 0.05, confidenceDrift: 0.21 });
-    expect(result.mode).toBe("degraded");
-  });
-
-  it("uses balanced policy when degraded but queueDepth is at or below 100", () => {
-    const result = evaluateMode({ queueDepth: 100, contaminationRate: 0.16, confidenceDrift: 0.05 });
-    expect(result.mode).toBe("degraded");
+describe("evaluateMode — normal mode boundaries", () => {
+  it("stays normal at contamination exactly 0.15 (not > 0.15)", () => {
+    const result = evaluateMode({ queueDepth: 0, contaminationRate: 0.15, confidenceDrift: 0.0 });
+    expect(result.mode).toBe("normal");
     expect(result.policy).toBe("balanced");
   });
 
-  it("uses priority_first policy when degraded and queueDepth exceeds 100", () => {
-    const result = evaluateMode({ queueDepth: 101, contaminationRate: 0.16, confidenceDrift: 0.05 });
+  it("stays normal at confidenceDrift exactly 0.2 (not > 0.2)", () => {
+    const result = evaluateMode({ queueDepth: 0, contaminationRate: 0.0, confidenceDrift: 0.2 });
+    expect(result.mode).toBe("normal");
+    expect(result.policy).toBe("balanced");
+  });
+
+  it("stays normal at queueDepth exactly 120 (not > 120)", () => {
+    const result = evaluateMode({ queueDepth: 120, contaminationRate: 0.0, confidenceDrift: 0.0 });
+    expect(result.mode).toBe("normal");
+    expect(result.policy).toBe("balanced");
+  });
+
+  it("includes a reasons entry for nominal state", () => {
+    const result = evaluateMode({ queueDepth: 10, contaminationRate: 0.0, confidenceDrift: 0.0 });
+    expect(result.reasons).toContain("nominal operating envelope");
+    expect(result.reasons).toHaveLength(1);
+  });
+});
+
+describe("evaluateMode — degraded mode triggers", () => {
+  it("enters degraded when contaminationRate just exceeds 0.15", () => {
+    const result = evaluateMode({ queueDepth: 0, contaminationRate: 0.151, confidenceDrift: 0.0 });
+    expect(result.mode).toBe("degraded");
+  });
+
+  it("enters degraded when queueDepth just exceeds 120", () => {
+    const result = evaluateMode({ queueDepth: 121, contaminationRate: 0.0, confidenceDrift: 0.0 });
+    expect(result.mode).toBe("degraded");
+  });
+
+  it("enters degraded when confidenceDrift just exceeds 0.2", () => {
+    const result = evaluateMode({ queueDepth: 0, contaminationRate: 0.0, confidenceDrift: 0.21 });
+    expect(result.mode).toBe("degraded");
+  });
+
+  it("selects priority_first policy when degraded and queueDepth > 100", () => {
+    const result = evaluateMode({ queueDepth: 101, contaminationRate: 0.0, confidenceDrift: 0.21 });
     expect(result.mode).toBe("degraded");
     expect(result.policy).toBe("priority_first");
   });
 
-  it("normal mode includes reason about nominal operating envelope", () => {
-    const result = evaluateMode({ queueDepth: 10, contaminationRate: 0.05, confidenceDrift: 0.05 });
-    expect(result.reasons).toContain("nominal operating envelope");
+  it("selects balanced policy when degraded but queueDepth <= 100", () => {
+    // contaminationRate=0.16 triggers degraded; queueDepth=50 means selectPolicy returns "balanced"
+    const result = evaluateMode({ queueDepth: 50, contaminationRate: 0.16, confidenceDrift: 0.0 });
+    expect(result.mode).toBe("degraded");
+    expect(result.policy).toBe("balanced");
   });
 
-  it("containment mode includes reason about safety threshold", () => {
-    const result = evaluateMode({ queueDepth: 10, contaminationRate: 0.5, confidenceDrift: 0.0 });
-    expect(result.reasons).toContain("safety threshold exceeded");
+  it("selects balanced policy when degraded and queueDepth exactly 100", () => {
+    const result = evaluateMode({ queueDepth: 100, contaminationRate: 0.16, confidenceDrift: 0.0 });
+    expect(result.mode).toBe("degraded");
+    expect(result.policy).toBe("balanced");
   });
 
-  it("degraded mode includes reason about load or evidence quality", () => {
-    const result = evaluateMode({ queueDepth: 200, contaminationRate: 0.05, confidenceDrift: 0.05 });
+  it("includes a reasons entry for degraded state", () => {
+    const result = evaluateMode({ queueDepth: 0, contaminationRate: 0.16, confidenceDrift: 0.0 });
     expect(result.reasons).toContain("load or evidence quality degraded");
+    expect(result.reasons).toHaveLength(1);
+  });
+});
+
+describe("evaluateMode — containment mode triggers", () => {
+  it("enters containment when contaminationRate just exceeds 0.3", () => {
+    const result = evaluateMode({ queueDepth: 0, contaminationRate: 0.31, confidenceDrift: 0.0 });
+    expect(result.mode).toBe("containment");
+    expect(result.policy).toBe("risk_limited");
   });
 
-  it("normal mode with queueDepth exactly 120 stays normal (boundary is > 120)", () => {
-    const result = evaluateMode({ queueDepth: 120, contaminationRate: 0.05, confidenceDrift: 0.05 });
-    expect(result.mode).toBe("normal");
+  it("enters containment when confidenceDrift just exceeds 0.4", () => {
+    const result = evaluateMode({ queueDepth: 0, contaminationRate: 0.0, confidenceDrift: 0.41 });
+    expect(result.mode).toBe("containment");
+    expect(result.policy).toBe("risk_limited");
   });
 
-  it("result contains all three required fields", () => {
-    const result = evaluateMode({ queueDepth: 10, contaminationRate: 0.05, confidenceDrift: 0.05 });
+  it("stays in degraded when contaminationRate is exactly 0.3 (not > 0.3)", () => {
+    const result = evaluateMode({ queueDepth: 0, contaminationRate: 0.3, confidenceDrift: 0.0 });
+    expect(result.mode).toBe("degraded");
+  });
+
+  it("stays in degraded when confidenceDrift is exactly 0.4 (not > 0.4)", () => {
+    const result = evaluateMode({ queueDepth: 0, contaminationRate: 0.0, confidenceDrift: 0.4 });
+    // contaminationRate=0 but confidenceDrift=0.4 is > 0.2, triggers degraded
+    expect(result.mode).toBe("degraded");
+  });
+
+  it("always selects risk_limited regardless of queueDepth in containment", () => {
+    const highQueue = evaluateMode({ queueDepth: 999, contaminationRate: 0.5, confidenceDrift: 0.0 });
+    const lowQueue = evaluateMode({ queueDepth: 0, contaminationRate: 0.5, confidenceDrift: 0.0 });
+    expect(highQueue.policy).toBe("risk_limited");
+    expect(lowQueue.policy).toBe("risk_limited");
+  });
+
+  it("includes a reasons entry for containment state", () => {
+    const result = evaluateMode({ queueDepth: 10, contaminationRate: 0.35, confidenceDrift: 0.0 });
+    expect(result.reasons).toContain("safety threshold exceeded");
+    expect(result.reasons).toHaveLength(1);
+  });
+
+  it("containment triggered by confidenceDrift also selects risk_limited", () => {
+    const result = evaluateMode({ queueDepth: 200, contaminationRate: 0.0, confidenceDrift: 0.5 });
+    expect(result.mode).toBe("containment");
+    expect(result.policy).toBe("risk_limited");
+  });
+});
+
+describe("evaluateMode — result structure", () => {
+  it("always returns mode, policy, and reasons fields", () => {
+    const result = evaluateMode({ queueDepth: 50, contaminationRate: 0.1, confidenceDrift: 0.05 });
     expect(result).toHaveProperty("mode");
     expect(result).toHaveProperty("policy");
     expect(result).toHaveProperty("reasons");
     expect(Array.isArray(result.reasons)).toBe(true);
   });
 
-  it("normal mode uses balanced policy even with queueDepth above 100", () => {
-    // queueDepth=101, contamination and drift within normal thresholds
-    const result = evaluateMode({ queueDepth: 101, contaminationRate: 0.05, confidenceDrift: 0.05 });
-    expect(result.mode).toBe("normal");
-    // In normal mode, selectPolicy is called with mode="normal" and queueDepth=101 (>100) -> priority_first
-    expect(result.policy).toBe("priority_first");
+  it("reasons array is non-empty for all modes", () => {
+    const normal = evaluateMode({ queueDepth: 0, contaminationRate: 0.0, confidenceDrift: 0.0 });
+    const degraded = evaluateMode({ queueDepth: 121, contaminationRate: 0.0, confidenceDrift: 0.0 });
+    const containment = evaluateMode({ queueDepth: 0, contaminationRate: 0.35, confidenceDrift: 0.0 });
+
+    expect(normal.reasons.length).toBeGreaterThan(0);
+    expect(degraded.reasons.length).toBeGreaterThan(0);
+    expect(containment.reasons.length).toBeGreaterThan(0);
   });
 });
