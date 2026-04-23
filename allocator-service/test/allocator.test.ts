@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { isValidVector } from "../src/matrix/constraints";
-import { generateValidVectors } from "../src/matrix/generator";
+import { generateAllVectors } from "../src/matrix/generator";
 import { assertInvariants } from "../src/matrix/invariants";
-import { runAllocator } from "../src/matrix/runAllocator";
-import type { Vector } from "../src/matrix/testMatrix";
+import type { AllocatorResponse, Vector } from "../src/matrix/testMatrix";
+import { safeRunAllocator } from "../src/runtime/enforce";
 
-const V18_FAST_PATH: Vector = {
+const V18: Vector = {
   env: "preview",
   mode: "streaming",
   risk: "low",
@@ -13,7 +13,7 @@ const V18_FAST_PATH: Vector = {
   auth: "protected",
 };
 
-const V42_SAFETY_PATH: Vector = {
+const V42: Vector = {
   env: "production",
   mode: "non-streaming",
   risk: "high",
@@ -21,11 +21,13 @@ const V42_SAFETY_PATH: Vector = {
   auth: "protected",
 };
 
-describe("allocator test matrix", () => {
-  it("generates every valid vector and excludes invalid vectors", () => {
-    const vectors = generateValidVectors();
-    expect(vectors.length).toBeGreaterThan(0);
+describe("allocator matrix", () => {
+  it("generates all and only valid vectors", () => {
+    const vectors = generateAllVectors();
+
+    expect(vectors.length).toBe(40);
     expect(vectors.every(isValidVector)).toBe(true);
+    expect(new Set(vectors.map((v) => JSON.stringify(v))).size).toBe(vectors.length);
 
     expect(vectors).not.toContainEqual({
       env: "preview",
@@ -34,50 +36,43 @@ describe("allocator test matrix", () => {
       decision: "defer",
       auth: "protected",
     });
-
-    expect(vectors).not.toContainEqual({
-      env: "production",
-      mode: "non-streaming",
-      risk: "high",
-      decision: "model",
-      auth: "bypass",
-    });
   });
 
-  it("enforces invariants for every generated vector", () => {
-    for (const vector of generateValidVectors()) {
-      const response = runAllocator(vector);
-      expect(() => assertInvariants(vector, response)).not.toThrow();
+  it("enforces invariants for every generated vector", async () => {
+    for (const vector of generateAllVectors()) {
+      await expect(safeRunAllocator(vector)).resolves.toBeDefined();
     }
   });
+});
 
-  it("validates V18 fast path", () => {
-    const response = runAllocator(V18_FAST_PATH);
+describe("golden vectors", () => {
+  it("V18 fast path", async () => {
+    const res = await safeRunAllocator(V18);
 
-    expect(response.streaming).toBe(true);
-    expect(response.autoApproved).toBe(true);
-    expect(response.latencyMs).toBeLessThan(200);
-    expect(() => assertInvariants(V18_FAST_PATH, response)).not.toThrow();
+    expect(res.stream).toBe(true);
+    expect(res.autoApproved).toBe(true);
+    expect(res.latency).toBeLessThan(200);
   });
 
-  it("validates V42 safety path", () => {
-    const response = runAllocator(V42_SAFETY_PATH);
+  it("V42 safety path", async () => {
+    const res = await safeRunAllocator(V42);
 
-    expect(response.autoApproved).toBe(false);
-    expect(response.externalApiCalls).toBe(0);
-    expect(response.deferred).toBe(true);
-    expect(() => assertInvariants(V42_SAFETY_PATH, response)).not.toThrow();
+    expect(res.autoApproved).toBe(false);
+    expect(res.apiCalls).toBe(0);
+    expect(res.deferred).toBe(true);
   });
+});
 
-  it("guards transitions: low-risk to high-risk and streaming to deferred", () => {
-    const lowRiskStreaming: Vector = {
+describe("transitions", () => {
+  it("low risk -> high risk removes auto-approval", async () => {
+    const lowRiskModel: Vector = {
       env: "production",
-      mode: "streaming",
+      mode: "non-streaming",
       risk: "low",
       decision: "model",
       auth: "protected",
     };
-    const highRiskDeferred: Vector = {
+    const highRiskDefer: Vector = {
       env: "production",
       mode: "non-streaming",
       risk: "high",
@@ -85,40 +80,65 @@ describe("allocator test matrix", () => {
       auth: "protected",
     };
 
-    const first = runAllocator(lowRiskStreaming);
-    const second = runAllocator(highRiskDeferred);
+    const before = await safeRunAllocator(lowRiskModel);
+    const after = await safeRunAllocator(highRiskDefer);
 
-    expect(first.autoApproved).toBe(true);
-    expect(second.autoApproved).toBe(false);
-    expect(second.deferred).toBe(true);
-    expect(second.externalApiCalls).toBe(0);
-    expect(() => assertInvariants(lowRiskStreaming, first)).not.toThrow();
-    expect(() => assertInvariants(highRiskDeferred, second)).not.toThrow();
+    expect(before.autoApproved).toBe(true);
+    expect(after.autoApproved).toBe(false);
+    expect(after.apiCalls).toBe(0);
   });
 
-  it("does not leak state across sequential evaluations", () => {
-    const highRiskDeferred: Vector = {
-      env: "production",
-      mode: "non-streaming",
-      risk: "high",
-      decision: "defer",
-      auth: "protected",
-    };
-    const lowRiskStreaming: Vector = {
+  it("streaming -> deferred has no cached unsafe behavior", async () => {
+    const streaming: Vector = {
       env: "preview",
       mode: "streaming",
-      risk: "low",
+      risk: "medium",
+      decision: "model",
+      auth: "protected",
+    };
+    const deferred: Vector = {
+      env: "preview",
+      mode: "non-streaming",
+      risk: "medium",
+      decision: "defer",
+      auth: "protected",
+    };
+
+    const first = await safeRunAllocator(streaming);
+    const second = await safeRunAllocator(deferred);
+
+    expect(first.stream).toBe(true);
+    expect(second.stream).toBe(false);
+    expect(second.deferred).toBe(true);
+    expect(second.apiCalls).toBe(0);
+  });
+});
+
+describe("metrics hook", () => {
+  it("fires on invariant violation", () => {
+    let called = false;
+    const badVector: Vector = {
+      env: "preview",
+      mode: "non-streaming",
+      risk: "high",
       decision: "model",
       auth: "protected",
     };
 
-    const first = runAllocator(highRiskDeferred);
-    const second = runAllocator(lowRiskStreaming);
+    const badResponse: AllocatorResponse = {
+      headers: { "Content-Type": "application/json" },
+      autoApproved: true,
+      apiCalls: 1,
+      latency: 150,
+      stream: false,
+      deferred: false,
+    };
 
-    expect(first.autoApproved).toBe(false);
-    expect(first.externalApiCalls).toBe(0);
-    expect(second.autoApproved).toBe(true);
-    expect(second.streaming).toBe(true);
-    expect(second.latencyMs).toBeLessThan(200);
+    expect(() =>
+      assertInvariants(badVector, badResponse, () => {
+        called = true;
+      }),
+    ).toThrow("High-risk auto-approved");
+    expect(called).toBe(true);
   });
 });

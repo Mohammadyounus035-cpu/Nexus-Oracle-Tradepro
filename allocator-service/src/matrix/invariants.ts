@@ -1,19 +1,30 @@
 import type { AllocatorResponse, Vector } from "./testMatrix";
 
-export function assertInvariants(vector: Vector, response: AllocatorResponse): void {
-  if (!response.headers["content-type"]) {
-    throw new Error("Invariant violation: missing Content-Type header");
+export type MetricsHook = (event: string, meta: Record<string, unknown>) => void;
+
+export function assertInvariants(
+  v: Vector,
+  res: AllocatorResponse,
+  metricsHook?: MetricsHook,
+): void {
+  function fail(reason: string): never {
+    metricsHook?.("allocator.invariant.violation", { reason, vector: v });
+    throw new Error(reason);
   }
 
-  if (vector.risk === "high" && response.autoApproved) {
-    throw new Error("Invariant violation: high-risk vector cannot auto-approve");
+  if (!res.headers["Content-Type"]) {
+    fail("Missing Content-Type");
   }
 
-  if (vector.decision === "defer" && response.externalApiCalls > 0) {
-    throw new Error("Invariant violation: deferred vector cannot call external APIs");
+  if (v.risk === "high" && res.autoApproved) {
+    fail("High-risk auto-approved");
   }
 
-  if (vector.mode === "streaming" && response.latencyMs >= 200) {
-    throw new Error("Invariant violation: streaming latency must be under 200ms");
+  if (v.decision === "defer" && res.apiCalls > 0) {
+    fail("Deferred made API call");
+  }
+
+  if (v.mode === "streaming" && res.latency >= 200) {
+    fail("Streaming latency exceeded");
   }
 }
