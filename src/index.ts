@@ -2,6 +2,7 @@ export {
   toCents,
   fromCents,
   compoundCents,
+  assertInvariant,
   formatUSD,
   calculateVerified,
   CalcSchema
@@ -9,16 +10,21 @@ export {
 
 export type { VerifiedResult, CalcInput } from "./money"
 
+export { canonicalize } from "./canonical"
+export type { CanonicalPayload } from "./canonical"
+
+export { sha256 } from "./crypto"
+
+export { verifyProof, verifySignature, importPublicKey } from "./signing"
+
 export {
-  generateSigningKeyPair,
-  calculateSigned,
-  verifyIntegrity,
-  verifySignature,
-  exportPublicKey,
-  importPublicKey
-} from "./signing"
+  calculateBound,
+  exportProof
+} from "./proof"
 
-export type { SignedResult, KeyPair } from "./signing"
+export type { BoundProof } from "./proof"
 
-export { loadOrCreateKeyPair } from "./keystore"
+export { reconstructCanonicalPayload, verifyStandaloneProof } from "./standaloneVerifier"
+export type { StandaloneVerificationResult } from "./standaloneVerifier"
+
 export { default as VerificationPanel } from "./VerificationPanel"
