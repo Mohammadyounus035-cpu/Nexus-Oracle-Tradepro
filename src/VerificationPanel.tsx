@@ -1,19 +1,19 @@
 import React, { useCallback, useEffect, useState } from "react"
 import { formatUSD } from "./money"
 import { loadOrCreateKeyPair } from "./keystore"
-import { calculateBound, verifyProof, type BoundProof, type KeyPair } from "./signing"
+import { calculateBound, type BoundProof, type KeyPair } from "./signing"
 import { exportProof } from "./proof"
+import { verifyStandaloneProof, type StandaloneVerificationResult } from "./standaloneVerifier"
 
 export default function VerificationPanel() {
   const [principal, setPrincipal] = useState(167.89)
   const [rate, setRate] = useState(0.05)
   const [years, setYears] = useState(10)
   const [proof, setProof] = useState<BoundProof | null>(null)
-  const [verification, setVerification] = useState<{
-    hashValid: boolean
-    signatureValid: boolean
-    trustworthy: boolean
-  } | null>(null)
+  const [verification, setVerification] = useState<StandaloneVerificationResult | null>(null)
+  const [externalProofText, setExternalProofText] = useState("")
+  const [externalVerification, setExternalVerification] = useState<StandaloneVerificationResult | null>(null)
+  const [externalError, setExternalError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [keyPair, setKeyPair] = useState<KeyPair | null>(null)
 
@@ -28,7 +28,7 @@ export default function VerificationPanel() {
     try {
       const nextProof = await calculateBound({ principal, rate, years }, keyPair)
       setProof(nextProof)
-      setVerification(await verifyProof(nextProof))
+      setVerification(await verifyStandaloneProof(nextProof))
     } catch (err) {
       console.error(err)
     } finally {
@@ -48,13 +48,25 @@ export default function VerificationPanel() {
     }
 
     setProof(tampered)
-    setVerification(await verifyProof(tampered))
+    setVerification(await verifyStandaloneProof(tampered))
   }, [proof])
+
+  const handleVerifyExternal = useCallback(async () => {
+    try {
+      const parsed = JSON.parse(externalProofText) as BoundProof
+      const result = await verifyStandaloneProof(parsed)
+      setExternalVerification(result)
+      setExternalError(null)
+    } catch (err) {
+      setExternalVerification(null)
+      setExternalError(err instanceof Error ? err.message : "Could not parse or verify proof JSON")
+    }
+  }, [externalProofText])
 
   return (
     <div
       style={{
-        maxWidth: 520,
+        maxWidth: 620,
         margin: "40px auto",
         padding: 24,
         fontFamily: "system-ui, -apple-system, sans-serif",
@@ -150,40 +162,34 @@ export default function VerificationPanel() {
             <strong>{formatUSD(proof.data.gain)}</strong>
           </div>
 
-          <div style={{ marginTop: 12, fontSize: 12, color: "#93c5fd" }}>
-            {proof.system.state} • output={proof.system.context.output} • drift={proof.system.context.drift}
-          </div>
-
           {verification && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "10px 14px",
-                borderRadius: 6,
-                color: "white",
-                fontWeight: 600,
-                fontSize: 13,
-                marginTop: 12,
-                background: verification.trustworthy ? "#10b981" : "#ef4444"
-              }}
-            >
-              {verification.trustworthy ? "Authentic — Hash & Signature Verified" : "Tampered — Verification Failed"}
-            </div>
+            <>
+              <div
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 6,
+                  color: "white",
+                  fontWeight: 600,
+                  fontSize: 13,
+                  marginTop: 12,
+                  background: verification.trustworthy ? "#10b981" : "#ef4444"
+                }}
+              >
+                {verification.trustworthy ? "Integrity: VALID • Binding: CORRECT" : "Integrity: INVALID • Tamper detected"}
+              </div>
+              <div style={{ marginTop: 10, fontSize: 12, color: "#93c5fd", wordBreak: "break-all" }}>
+                canonical={verification.canonical}
+              </div>
+              <div style={{ marginTop: 8, fontSize: 12, color: "#93c5fd" }}>
+                recomputedHash={verification.recomputedHash}
+              </div>
+            </>
           )}
 
           <div style={{ marginTop: 12 }}>
-            <label style={{ display: "block", fontSize: 11, color: "#64748b", marginBottom: 4 }}>SHA-256 Hash</label>
+            <label style={{ display: "block", fontSize: 11, color: "#64748b", marginBottom: 4 }}>Signed Hash</label>
             <code style={{ display: "block", fontSize: 11, fontFamily: "monospace", color: "#94a3b8", wordBreak: "break-all", background: "#0f172a", padding: 8, borderRadius: 4 }}>
               {proof.verification.hash}
-            </code>
-          </div>
-
-          <div style={{ marginTop: 10 }}>
-            <label style={{ display: "block", fontSize: 11, color: "#64748b", marginBottom: 4 }}>Signature</label>
-            <code style={{ display: "block", fontSize: 11, fontFamily: "monospace", color: "#94a3b8", wordBreak: "break-all", background: "#0f172a", padding: 8, borderRadius: 4 }}>
-              {proof.verification.signature}
             </code>
           </div>
 
@@ -205,6 +211,33 @@ export default function VerificationPanel() {
           </button>
         </div>
       )}
+
+      <div style={{ background: "#111827", padding: 16, borderRadius: 8 }}>
+        <h3 style={{ margin: "0 0 8px 0", fontSize: 16 }}>Standalone Verification Target</h3>
+        <p style={{ margin: "0 0 10px 0", fontSize: 12, color: "#9ca3af" }}>
+          Paste an exported proof JSON to run canonical reconstruction, hash recompute, and signature verification independently.
+        </p>
+        <textarea
+          value={externalProofText}
+          onChange={e => setExternalProofText(e.target.value)}
+          placeholder='{"timestamp":"...","data":{...},"verification":{...}}'
+          style={{ width: "100%", minHeight: 120, background: "#0f172a", color: "#e5e7eb", border: "1px solid #374151", borderRadius: 6, padding: 8, fontFamily: "monospace", fontSize: 12 }}
+        />
+        <button
+          onClick={handleVerifyExternal}
+          style={{ marginTop: 8, padding: "8px 12px", background: "#1d4ed8", color: "white", border: "none", borderRadius: 6, fontWeight: 600, cursor: "pointer" }}
+        >
+          Verify Pasted Proof
+        </button>
+
+        {externalError && <div style={{ marginTop: 8, color: "#fca5a5", fontSize: 12 }}>{externalError}</div>}
+
+        {externalVerification && (
+          <div style={{ marginTop: 10, fontSize: 12, color: "#cbd5e1" }}>
+            hashValid={String(externalVerification.hashValid)} • signatureValid={String(externalVerification.signatureValid)} • trustworthy={String(externalVerification.trustworthy)}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

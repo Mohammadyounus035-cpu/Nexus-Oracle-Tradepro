@@ -32,3 +32,7 @@ export type { BoundProof, SignedResult, KeyPair } from "./signing"
 export { exportProof } from "./proof"
 export { loadOrCreateKeyPair } from "./keystore"
 export { default as VerificationPanel } from "./VerificationPanel"
+
+
+export { reconstructCanonicalPayload, verifyStandaloneProof } from "./standaloneVerifier"
+export type { StandaloneVerificationResult } from "./standaloneVerifier"
