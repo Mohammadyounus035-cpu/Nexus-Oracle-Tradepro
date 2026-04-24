@@ -15,24 +15,16 @@ export type { CanonicalPayload } from "./canonical"
 
 export { sha256 } from "./crypto"
 
+export { verifyProof, verifySignature, importPublicKey } from "./signing"
+
 export {
-  generateSigningKeyPair,
-  signPayload,
   calculateBound,
-  calculateSigned,
-  verifyProof,
-  verifyIntegrity,
-  verifySignature,
-  exportPublicKey,
-  importPublicKey
-} from "./signing"
+  exportProof
+} from "./proof"
 
-export type { BoundProof, SignedResult, KeyPair } from "./signing"
-
-export { exportProof } from "./proof"
-export { loadOrCreateKeyPair } from "./keystore"
-export { default as VerificationPanel } from "./VerificationPanel"
-
+export type { BoundProof } from "./proof"
 
 export { reconstructCanonicalPayload, verifyStandaloneProof } from "./standaloneVerifier"
 export type { StandaloneVerificationResult } from "./standaloneVerifier"
+
+export { default as VerificationPanel } from "./VerificationPanel"

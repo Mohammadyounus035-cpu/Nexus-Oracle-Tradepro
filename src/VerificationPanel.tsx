@@ -1,8 +1,6 @@
-import React, { useCallback, useEffect, useState } from "react"
+import React, { useCallback, useState } from "react"
 import { formatUSD } from "./money"
-import { loadOrCreateKeyPair } from "./keystore"
-import { calculateBound, type BoundProof, type KeyPair } from "./signing"
-import { exportProof } from "./proof"
+import { calculateBound, exportProof, type BoundProof } from "./proof"
 import { verifyStandaloneProof, type StandaloneVerificationResult } from "./standaloneVerifier"
 
 export default function VerificationPanel() {
@@ -15,18 +13,11 @@ export default function VerificationPanel() {
   const [externalVerification, setExternalVerification] = useState<StandaloneVerificationResult | null>(null)
   const [externalError, setExternalError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [keyPair, setKeyPair] = useState<KeyPair | null>(null)
-
-  useEffect(() => {
-    loadOrCreateKeyPair().then(setKeyPair)
-  }, [])
 
   const handleCalculateAndBind = useCallback(async () => {
-    if (!keyPair) return
-
     setLoading(true)
     try {
-      const nextProof = await calculateBound({ principal, rate, years }, keyPair)
+      const nextProof = await calculateBound({ principal, rate, years })
       setProof(nextProof)
       setVerification(await verifyStandaloneProof(nextProof))
     } catch (err) {
@@ -34,7 +25,7 @@ export default function VerificationPanel() {
     } finally {
       setLoading(false)
     }
-  }, [principal, rate, years, keyPair])
+  }, [principal, rate, years])
 
   const handleTamperTest = useCallback(async () => {
     if (!proof) return
@@ -117,7 +108,7 @@ export default function VerificationPanel() {
       <div style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr 1fr", marginBottom: 16 }}>
         <button
           onClick={handleCalculateAndBind}
-          disabled={loading || !keyPair}
+          disabled={loading}
           style={{
             padding: "12px",
             background: "#2563eb",

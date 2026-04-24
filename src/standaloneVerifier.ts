@@ -1,4 +1,4 @@
-import type { BoundProof } from "./signing"
+import type { BoundProof } from "./proof"
 
 export type StandaloneVerificationResult = {
   canonical: string
@@ -45,13 +45,13 @@ export async function verifyStandaloneProof(proof: BoundProof): Promise<Standalo
   const publicKey = await crypto.subtle.importKey(
     "spki",
     base64ToBytes(proof.verification.publicKey),
-    { name: "Ed25519" },
+    { name: "ECDSA", namedCurve: "P-256" },
     true,
     ["verify"]
   )
 
   const signatureValid = await crypto.subtle.verify(
-    "Ed25519",
+    { name: "ECDSA", hash: "SHA-256" },
     publicKey,
     base64ToBytes(proof.verification.signature),
     data
