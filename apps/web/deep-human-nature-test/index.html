@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deep Human Nature Test — Verifiable</title>
+<style>
+body{margin:0;background:#000;color:#fff;font-family:Arial;text-align:center}
+h1{color:#ff2a2a;text-shadow:0 0 20px red}
+button{margin:10px;padding:12px;border:1px solid red;background:#111;color:white;cursor:pointer;transition:.3s}
+button:hover{background:red;transform:translateX(10px)}
+#bar{height:5px;width:0%;background:red}
+</style>
+</head>
+<body>
+<h1>Deep Human Nature Test</h1>
+<div style="width:80%;margin:auto;background:#222;"><div id="bar"></div></div>
+<div id="question"></div>
+<div id="options"></div>
+<div id="result" style="display:none;">
+<h2>Verifiable Artifact</h2>
+<pre id="artifact"></pre>
+<button onclick="restart()">Retake</button>
+</div>
+<script>
+const questions=[
+{q:"Reality resets daily",a:["Enter","Observe","Destroy"]},
+{q:"Notebook writes future",a:["Read","Burn","Ignore"]},
+{q:"People speak backwards",a:["Adapt","Panic","Study"]}
+];
+let i=0,responses=[];
+let keyPair;
+async function initKeys(){keyPair=await crypto.subtle.generateKey({name:"Ed25519"},true,["sign","verify"])}
+async function exportPublicKey(){const raw=await crypto.subtle.exportKey("raw",keyPair.publicKey);return btoa(String.fromCharCode(...new Uint8Array(raw)))}
+async function signData(hashHex){const data=new TextEncoder().encode(hashHex);const sig=await crypto.subtle.sign("Ed25519",keyPair.privateKey,data);return btoa(String.fromCharCode(...new Uint8Array(sig)))}
+function load(){let q=questions[i];document.getElementById("question").innerText=q.q;let opt="";q.a.forEach((o,idx)=>{opt+=`<button onclick=\"select(${idx})\">${o}</button>`});document.getElementById("options").innerHTML=opt}
+function select(v){responses.push(v);i++;document.getElementById("bar").style.width=(i/questions.length*100)+"%";if(i<questions.length)load();else finalize()}
+async function finalize(){if(responses.length!==questions.length)throw Error("Invariant breach");let payload={timestamp:new Date().toISOString(),responses,questions:questions.map(q=>q.q)};let canon=JSON.stringify(payload);let hashBuffer=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(canon));let hash=Array.from(new Uint8Array(hashBuffer)).map(b=>b.toString(16).padStart(2,'0')).join('');let signature=await signData(hash);let publicKey=await exportPublicKey();let artifact={...payload,verification:{canonicalVersion:"v1",hash,signature,publicKey}};document.getElementById("result").style.display="block";document.getElementById("artifact").innerText=JSON.stringify(artifact,null,2);document.getElementById("question").style.display="none";document.getElementById("options").style.display="none"}
+function restart(){i=0;responses=[];document.getElementById("result").style.display="none";document.getElementById("question").style.display="block";document.getElementById("options").style.display="block";document.getElementById("bar").style.width="0%";load()}
+initKeys();load();
+</script>
+</body>
+</html>
