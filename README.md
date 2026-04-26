@@ -1,6 +1,8 @@
 # Omega Lattice
 
-A minimal monorepo implementing the "Omega Lattice" proof-of-concept: a WebSocket-driven lattice engine (server) and a Next.js + Three.js client (web) that visualizes lattice state in 3D.
+[![Nexus Core CI](https://github.com/mohammadyounus128198-cyber/Work-/actions/workflows/nexus-core-ci.yml/badge.svg)](https://github.com/mohammadyounus128198-cyber/Work-/actions)
+
+A sophisticated monorepo implementing the **Omega Lattice** protocol: a high-performance WebSocket-driven lattice engine and a Next.js + Three.js visualization suite.
 
 This repository is intended as a developer-ready starting point you can run locally or import into Replit. It includes a simple engine (packages/engine), type facade (packages/types), a WS server (apps/server), and a Next web client (apps/web).
 
