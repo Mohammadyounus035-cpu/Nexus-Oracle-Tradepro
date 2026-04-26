@@ -1,0 +1,23 @@
+{
+  "name": "work-monorepo",
+  "version": "1.0.0",
+  "description": "Monorepo for Omega Lattice and Nexus Core projects.",
+  "private": true,
+  "scripts": {
+    "install:all": "pnpm install",
+    "build:all": "pnpm -r build",
+    "test:all": "pnpm -r test",
+    "dev:web": "pnpm --filter web dev",
+    "dev:server": "pnpm --filter server dev"
+  },
+  "keywords": [],
+  "author": "Manus AI",
+  "license": "MIT",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "nexus-core",
+    "allocator-service",
+    "mfcs-omega/codex/vscode-extension"
+  ]
+}
