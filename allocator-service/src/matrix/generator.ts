@@ -1,3 +1,8 @@
+import { AUTHS, DECISIONS, ENVS, MODES, RISKS, type Vector } from "./testMatrix";
+import { isValidVector } from "./constraints";
+
+export function generateAllVectors(): Vector[] {
+  const out: Vector[] = [];
 import { isValidVector } from "./constraints";
 import {
   AUTHS,
@@ -18,6 +23,15 @@ export function generateAllVectors(): Vector[] {
           for (const auth of AUTHS) {
             const vector: Vector = { env, mode, risk, decision, auth };
             if (isValidVector(vector)) {
+              out.push(vector);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return out;
               vectors.push(vector);
             }
           }
