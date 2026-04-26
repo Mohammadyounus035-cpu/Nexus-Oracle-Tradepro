@@ -6,7 +6,10 @@
     "build": "tsc",
     "start": "node dist/demo/runDemo.js",
     "dev": "tsx src/demo/runDemo.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "analyze": "tsx src/demo/run.ts",
+    "verify:analysis": "python3 verify.py --analysis analysis.json --sha analysis.json.sha256",
+    "generate:keys": "tsx scripts/generate-keys.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

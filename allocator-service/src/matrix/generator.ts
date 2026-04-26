@@ -3,6 +3,18 @@ import { isValidVector } from "./constraints";
 
 export function generateAllVectors(): Vector[] {
   const out: Vector[] = [];
+import { isValidVector } from "./constraints";
+import {
+  AUTHS,
+  DECISIONS,
+  ENVS,
+  MODES,
+  RISKS,
+  type Vector,
+} from "./testMatrix";
+
+export function generateAllVectors(): Vector[] {
+  const vectors: Vector[] = [];
 
   for (const env of ENVS) {
     for (const mode of MODES) {
@@ -20,4 +32,13 @@ export function generateAllVectors(): Vector[] {
   }
 
   return out;
+              vectors.push(vector);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return vectors;
 }

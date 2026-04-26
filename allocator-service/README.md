@@ -32,3 +32,19 @@ Example payload:
   "nodes": [{ "id": "n1", "capacity": 1, "used": 0 }]
 }
 ```
+
+## Lattice matrix compiler
+
+`TEST_MATRIX.md` is the policy source for matrix coverage. Compile executable vectors with:
+
+```bash
+npm run lattice:vectors
+```
+
+Run one compiled vector through invariant checks:
+
+```bash
+npm run lattice:check -- '{"env":"preview","mode":"streaming","risk":"low","decision":"model","auth":"protected"}'
+```
+
+> Script naming note: the generator is intentionally `scripts/gen-vectors.ts` (not `gen-108.ts`) so the filename remains true even if vector counts change.

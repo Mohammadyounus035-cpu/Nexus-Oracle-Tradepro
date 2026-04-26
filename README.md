@@ -118,6 +118,55 @@ Set them before starting the web or use an .env approach in your dev environment
 
 ---
 
+
+## Truth-first interface guardrails
+
+When testing claims that include strong visuals + numeric anchors (e.g., `432 Hz`, `528 Hz`, "resonance" labels), treat them as **unverified inputs** unless they are bound to measurable evidence.
+
+Recommended contract for UI + engine:
+
+- **Provenance required**: every displayed metric must include source id, measurement method, and timestamp.
+- **Deterministic mapping**: visual state should be a pure function of validated state, not free text claims.
+- **Reproducibility**: values must be derivable from persisted inputs + code version.
+- **Invariant enforcement**: if a claim cannot be derived, block render or mark as unverified.
+- **Auditability**: hash-lock state transitions and keep an append-only event log for post-hoc verification.
+
+Suggested implementation path:
+
+1. Add `verification` metadata to lattice packets (`source`, `method`, `confidence`, `measured_at`).
+2. Reject packets that fail schema + invariant checks in `apps/server` before broadcast.
+3. In `apps/web`, render a "verified" badge only when proof metadata is complete.
+4. Add test vectors that intentionally include persuasive-but-invalid numeric claims and assert rejection.
+
+This keeps the system aligned with a simple rule: **if it cannot be derived, it cannot be displayed**.
+
+---
+
+
+## Visual state semantics (UI as state, not symbolism)
+
+The lattice visuals can be interpreted as concrete UI/state representations:
+
+- **Static state (baseline)**: a centered hexagon with uniform glow maps to a single authoritative state with no active transitions (e.g., `HOLD`, `drift = 0`, `input == anchor`).
+- **System envelope (bounded field)**: adding an outer sphere while the core remains unchanged maps to packaging the canonical payload with proof artifacts (`hash`, `signature`, `publicKey`) without mutating the payload itself.
+
+Progression:
+
+1. Compute canonical payload (`data`).
+2. Stabilize/validate invariants (`no drift`, deterministic output).
+3. Seal with proof metadata (`hash`, `signature`) for external verification.
+
+Important: visuals are representations only. Guarantees come from canonicalization, hashing/signing, verification checks, and tests.
+
+| Visual element | System equivalent |
+| --- | --- |
+| Hexagon core | Canonical state/payload |
+| Uniform glow | Deterministic output |
+| Stillness | No state transition firing |
+| Outer sphere | Signed + hashed envelope |
+| Center alignment | Invariant satisfied |
+| No distortion | Zero drift |
+
 ## Deploy
 
 - Vercel: Deploy `apps/web` to Vercel; point `NEXT_PUBLIC_WS_URL` at a publicly accessible WS server (or deploy the server somewhere public as well).
