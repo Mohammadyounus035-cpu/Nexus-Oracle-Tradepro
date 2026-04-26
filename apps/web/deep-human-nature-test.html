@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deep Human Nature Test</title>
+<style>
+  body {
+    margin:0;
+    font-family: Arial, sans-serif;
+    background: radial-gradient(circle at center, #0a0a0a 0%, #000 100%);
+    color:#fff;
+    overflow:hidden;
+  }
+  h1 {
+    text-align:center;
+    font-size:3rem;
+    margin-top:40px;
+    color:#ff3b3b;
+    text-shadow:0 0 20px #ff0000;
+  }
+  #container {
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    height:80vh;
+  }
+  .question {
+    font-size:1.5rem;
+    margin-bottom:20px;
+    text-align:center;
+  }
+  .options button {
+    display:block;
+    margin:10px;
+    padding:12px 20px;
+    background:#111;
+    border:1px solid #ff3b3b;
+    color:#fff;
+    cursor:pointer;
+    transition: all 0.2s ease;
+  }
+  .options button:hover {
+    background:#ff3b3b;
+    transform: translateX(10px);
+  }
+  #progress {
+    width:80%;
+    height:10px;
+    background:#222;
+    margin:20px auto;
+  }
+  #bar {
+    height:100%;
+    width:0%;
+    background:#ff0000;
+    transition: width 0.3s;
+  }
+  #result {
+    display:none;
+    text-align:center;
+  }
+  .glow {
+    animation: glow 2s infinite alternate;
+  }
+  @keyframes glow {
+    from { text-shadow:0 0 10px #ff0000; }
+    to { text-shadow:0 0 30px #ff0000; }
+  }
+</style>
+</head>
+<body>
+<h1 class="glow">Deep Human Nature Test</h1>
+<div id="progress"><div id="bar"></div></div>
+<div id="container">
+  <div id="quiz">
+    <div class="question" id="question"></div>
+    <div class="options" id="options"></div>
+  </div>
+  <div id="result">
+    <h2>Your Nature Revealed</h2>
+    <p id="resultText"></p>
+    <button onclick="restart()">Retake Test</button>
+  </div>
+</div>
+<script>
+const questions = [
+  {
+    q: "You find a door in your basement that resets reality every 24 hours.",
+    a: ["Enter immediately", "Study it first", "Destroy it"]
+  },
+  {
+    q: "A notebook writes your future every time you blink.",
+    a: ["Read it", "Burn it", "Ignore it"]
+  },
+  {
+    q: "You wake up and everyone speaks backwards.",
+    a: ["Adapt", "Panic", "Observe silently"]
+  },
+  {
+    q: "A store gives everything free but you cannot leave.",
+    a: ["Stay", "Escape", "Explore deeper"]
+  }
+];
+
+let index = 0;
+let score = 0;
+
+function loadQuestion() {
+  const q = questions[index];
+  document.getElementById('question').textContent = q.q;
+  const options = document.getElementById('options');
+  options.innerHTML = '';
+  q.a.forEach((opt,i)=>{
+    const btn = document.createElement('button');
+    btn.textContent = opt;
+    btn.onclick = ()=> select(i);
+    options.appendChild(btn);
+  });
+}
+
+function select(i) {
+  score += i;
+  index++;
+  updateBar();
+  if(index < questions.length) {
+    loadQuestion();
+  } else {
+    showResult();
+  }
+}
+
+function updateBar() {
+  const percent = (index / questions.length) * 100;
+  document.getElementById('bar').style.width = percent + '%';
+}
+
+function showResult() {
+  document.getElementById('quiz').style.display='none';
+  document.getElementById('result').style.display='block';
+
+  let text = "";
+  if(score < 3) text = "You are cautious and analytical.";
+  else if(score < 6) text = "You are curious but balanced.";
+  else text = "You embrace chaos and unknown.";
+
+  document.getElementById('resultText').textContent = text;
+}
+
+function restart() {
+  index=0; score=0;
+  document.getElementById('quiz').style.display='block';
+  document.getElementById('result').style.display='none';
+  updateBar();
+  loadQuestion();
+}
+
+loadQuestion();
+</script>
+</body>
+</html>
