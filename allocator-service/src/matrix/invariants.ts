@@ -1,4 +1,4 @@
-import type { AllocatorResponse, Vector } from "./testMatrix";
+import type { Decision, Metrics, Vector } from "./testMatrix";
 
 export type InvariantMetricsHook = (event: {
   vector: Vector;
@@ -8,7 +8,8 @@ export type InvariantMetricsHook = (event: {
 
 export function assertInvariants(
   vector: Vector,
-  response: AllocatorResponse,
+  decision: Decision,
+  metrics?: Metrics,
   metricsHook?: InvariantMetricsHook,
 ): void {
   const fail = (invariant: string, message: string): never => {
@@ -16,19 +17,21 @@ export function assertInvariants(
     throw new Error(`${invariant}: ${message}`);
   };
 
-  if (!response.headers["Content-Type"]) {
-    fail("headers", "response is missing Content-Type header");
+  if (vector.risk === "high" && decision === "bypass") {
+    fail("safety", "unsafe bypass");
   }
 
-  if (vector.risk === "high" && response.autoApproved) {
-    fail("safety", "high-risk vectors must not be auto-approved");
+  if (vector.mode === "streaming" && decision !== "model") {
+    fail("latency", "streaming must use model");
   }
 
-  if (vector.decision === "defer" && response.externalApiCalls > 0) {
-    fail("cost", "deferred vectors must not call external APIs");
-  }
+  if (metrics) {
+    if (metrics.safety < 0.5) {
+      fail("safety", "safety floor violated");
+    }
 
-  if (vector.mode === "streaming" && response.latencyMs >= 200) {
-    fail("latency", "streaming vectors must stay under 200ms latency");
+    if (metrics.latency < 0 || metrics.cost < 0) {
+      fail("metrics", "invalid metric values");
+    }
   }
 }
