@@ -3,6 +3,9 @@ import path from "node:path";
 import type { FullAnalysis } from "./pipeline.js";
 import { sha256Hex, stableStringify } from "./hash.js";
 
+export function exportAnalysis(analysis: FullAnalysis, outputPath = "./analysis.json"): void {
+  const payload = `${JSON.stringify(analysis, null, 2)}\n`;
+  fs.writeFileSync(outputPath, payload, "utf8");
 export type ExportResult = {
   outputPath: string;
   hashPath: string;
