@@ -4,6 +4,8 @@ import { allocate } from "../src/solver/allocate";
 describe("determinism", () => {
   it("produces stable hash regardless of item/node order", () => {
     const a = allocate({
+  it("produces identical output regardless of item/node/tag order", () => {
+    const inputA = {
       items: [
         { id: "i2", risk: 0.4, requiredTags: ["b", "a"] },
         { id: "i1", risk: 0.5 },
@@ -15,6 +17,9 @@ describe("determinism", () => {
     });
 
     const b = allocate({
+    };
+
+    const inputB = {
       items: [
         { id: "i1", risk: 0.5 },
         { id: "i2", risk: 0.4, requiredTags: ["a", "b"] },
@@ -27,5 +32,19 @@ describe("determinism", () => {
 
     expect(a.requestHash).toBe(b.requestHash);
     expect(a.assignments).toEqual(b.assignments);
+  });
+});
+    };
+
+    const a = allocate(inputA);
+    const b = allocate(inputB);
+
+    expect(a.requestHash).toBe(b.requestHash);
+    expect(a.assignments).toEqual(b.assignments);
+    expect(a.flow).toBe(b.flow);
+    expect(a.cost).toBe(b.cost);
+    expect(a.deterministic).toBe(true);
+    expect(b.deterministic).toBe(true);
+    expect(a).toEqual(b);
   });
 });

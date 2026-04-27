@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head><title>External Verifier</title></head>
+<body style="background:#000;color:#fff;font-family:Arial;text-align:center">
+<h1>External Proof Verifier</h1>
+<input type="file" id="file" />
+<pre id="output"></pre>
+<script>
+document.getElementById('file').onchange=async(e)=>{
+ const file=e.target.files[0];
+ const text=await file.text();
+ const artifact=JSON.parse(text);
+ const enc=new TextEncoder();
+ const canon=JSON.stringify({timestamp:artifact.timestamp,responses:artifact.responses,questions:artifact.questions});
+ const hashBuffer=await crypto.subtle.digest("SHA-256",enc.encode(canon));
+ const hash=Array.from(new Uint8Array(hashBuffer)).map(b=>b.toString(16).padStart(2,'0')).join('');
+ let validHash = hash === artifact.verification.hash;
+ document.getElementById('output').innerText = validHash ? "HASH VERIFIED" : "HASH MISMATCH";
+};
+</script>
+</body>
+</html>
