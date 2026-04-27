@@ -1,0 +1,6 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+  - 'nexus-core'
+  - 'allocator-service'
+  - 'mfcs-omega/codex/vscode-extension'

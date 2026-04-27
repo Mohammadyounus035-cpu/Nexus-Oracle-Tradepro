@@ -1,0 +1,83 @@
+{
+  "phase1_canonical": "{\"a_first\":0.0,\"caf\u00e9_key\":\"precomposed\",\"note\":\"line\\u2028break\",\"prev_cid\":\"bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi\",\"reputation\":0.87,\"sequence\":42,\"z_last\":true}",
+  "phase1_bytes": 185,
+  "phase2_domain": "DSS-v1-671.6Hz",
+  "phase2_hash": "ccdef5d1ba5a3a5f126352b4ff596bfdc38eabba859cc447029266861a5dc0e0",
+  "phase3_signatures": [
+    {
+      "authority": "primary-signer-01",
+      "fingerprint": "2abb7dfdc4b11b767d164104e4b512cea341ad604144c0a197b3804752e45ee5",
+      "signature": "6064c3d227a363dd17ecc56ffe1bbd8d3d3e5eea1f43f31ac367d0756617d389",
+      "weight": 1.0
+    },
+    {
+      "authority": "primary-signer-02",
+      "fingerprint": "0af965768667857180f612c8b4a588b8df94f0a91cf75da1c6ea2a9c9d01d488",
+      "signature": "74fdae916cec55ab518d601ea5466c94aea94c10b1dbed0caff0b023525f3f21",
+      "weight": 1.0
+    }
+  ],
+  "phase4_registry": {
+    "version": "AC-6-HARDEN-v1",
+    "threshold": 1.5,
+    "authorities": [
+      {
+        "id": "primary-signer-01",
+        "public_key": "1f1939eb902fb069ddb8bb839288b4288b98cc0cb10a8faaa9dc3b6e941e27a2",
+        "fingerprint": "2abb7dfdc4b11b767d164104e4b512cea341ad604144c0a197b3804752e45ee5",
+        "weight": 1.0,
+        "state": "ACTIVE",
+        "registered_at": "2026-04-26T07:40:23.646993Z",
+        "domain": "DSS-v1-671.6Hz"
+      },
+      {
+        "id": "primary-signer-02",
+        "public_key": "0589a794bc13bddd21a780714ebd2afc50b42ced3e9d0f0e2cb360187a342985",
+        "fingerprint": "0af965768667857180f612c8b4a588b8df94f0a91cf75da1c6ea2a9c9d01d488",
+        "weight": 1.0,
+        "state": "ACTIVE",
+        "registered_at": "2026-04-26T07:40:23.647015Z",
+        "domain": "DSS-v1-671.6Hz"
+      }
+    ],
+    "revoked": [],
+    "sources": [
+      "https://registry.dss.example/v1"
+    ]
+  },
+  "phase5_envelope": {
+    "gossip_id": "7b8e7753c30170b3",
+    "timestamp": "2026-04-26T07:40:23.648274Z",
+    "domain": "DSS-v1-671.6Hz",
+    "payload_hash": "ccdef5d1ba5a3a5f126352b4ff596bfdc38eabba859cc447029266861a5dc0e0",
+    "canonical_bytes": 185,
+    "signatures": [
+      {
+        "authority": "primary-signer-01",
+        "fingerprint": "2abb7dfdc4b11b767d164104e4b512cea341ad604144c0a197b3804752e45ee5",
+        "signature": "6064c3d227a363dd17ecc56ffe1bbd8d3d3e5eea1f43f31ac367d0756617d389",
+        "weight": 1.0
+      },
+      {
+        "authority": "primary-signer-02",
+        "fingerprint": "0af965768667857180f612c8b4a588b8df94f0a91cf75da1c6ea2a9c9d01d488",
+        "signature": "74fdae916cec55ab518d601ea5466c94aea94c10b1dbed0caff0b023525f3f21",
+        "weight": 1.0
+      }
+    ],
+    "total_weight": 2.0,
+    "threshold": 1.5,
+    "consensus": true,
+    "ttl": 3,
+    "prev_cid": "bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi",
+    "sequence": 42
+  },
+  "verification": {
+    "canonical_match": true,
+    "hash_match": true,
+    "all_signatures_valid": true,
+    "consensus": true,
+    "total_weight": 2.0,
+    "threshold": 1.5
+  }
+}

@@ -1,0 +1,27 @@
+<!-- VERIFIED VERSION: TradePro v2 with Ω Pipeline + Verification Gate -->
+<script type="module">
+import { omegaPipeline } from '/src/lib/omegaPipeline.ts';
+import { verifyProof } from '/packages/verify/clientVerify.ts';
+
+window.secureExecute = async function(input) {
+  const result = await omegaPipeline(input);
+  if (!result) return null;
+
+  const res = await fetch('/sign', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(result)
+  });
+
+  const { proof } = await res.json();
+  const valid = await verifyProof(proof);
+
+  if (!valid) {
+    throw new Error('Invariant breach: verification failed');
+  }
+
+  return { ...result, proof, verified: true };
+};
+</script>
+
+<!-- UI MUST CALL secureExecute() INSTEAD OF DIRECT ACTIONS -->
