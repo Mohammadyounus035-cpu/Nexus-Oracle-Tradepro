@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Playables SDK -->
+<script>// Playables SDK v1.0.0
+// Game lifecycle bridge: rAF-based game-ready detection + event communication
+(function() {
+  'use strict';
+
+  // Idempotency: skip if already initialized (e.g., server-side injection
+  // followed by client-side inject-javascript via the Bloks webview component).
+  if (window.playablesSDK) return;
+
+  var HANDLER_NAME = 'playablesGameEventHandler';
+  var ANDROID_BRIDGE_NAME = '_MetaPlayablesBridge';
+  var RAF_FRAME_THRESHOLD = 3;
+
+  var gameReadySent = false;
+  var firstInteractionSent = false;
+  var errorSent = false;
+  var frameCount = 0;
+  var originalRAF = window.requestAnimationFrame;
+
+  // --- Transport Layer ---
+
+  function hasIOSBridge() {
+    return !!(window.webkit &&
+              window.webkit.messageHandlers &&
+              window.webkit.messageHandlers[HANDLER_NAME]);
+  }
+
+  function hasAndroidBridge() {
+    return !!(window[ANDROID_BRIDGE_NAME] &&
+              typeof window[ANDROID_BRIDGE_NAME].postEvent === 'function');
+  }
+
+  function isInIframe() {
+    return !!(window.parent && window.parent !== window);
+  }
+
+  function sendEvent(eventName, payload) {
+    var message = {
+      type: eventName,
+      payload: payload || {},
+      timestamp: Date.now()
+    };
+
+    if (hasIOSBridge()) {
+      try {
+        window.webkit.messageHandlers[HANDLER_NAME].postMessage(message);
+      } catch (e) { /* ignore */ }
+      return;
+    }
+
+    if (hasAndroidBridge()) {
+      try {
+        var p = payload || {};
+        p.__secureToken = window.__fbAndroidBridgeAuthToken || '';
+        window[ANDROID_BRIDGE_NAME].postEvent(
+          eventName,
+          JSON.stringify(p)
+        );
+      } catch (e) { /* ignore */ }
+      return;
+    }
+
+    if (isInIframe()) {
+      try {
+        window.parent.postMessage(message, '*');
+      } catch (e) { /* ignore */ }
+      return;
+    }
+  }
+
+  // --- rAF Game-Ready Detection ---
+
+  function onFrame() {
+    if (gameReadySent) return;
+
+    frameCount++;
+    if (frameCount >= RAF_FRAME_THRESHOLD) {
+      gameReadySent = true;
+      sendEvent('game_ready', {
+        frame_count: frameCount,
+        detected_at: Date.now()
+      });
+      return;
+    }
+
+    originalRAF.call(window, onFrame);
+  }
+
+  if (originalRAF) {
+    window.requestAnimationFrame = function(callback) {
+      if (!gameReadySent) {
+        return originalRAF.call(window, function(timestamp) {
+          frameCount++;
+          if (frameCount >= RAF_FRAME_THRESHOLD && !gameReadySent) {
+            gameReadySent = true;
+            sendEvent('game_ready', {
+              frame_count: frameCount,
+              detected_at: Date.now()
+            });
+          }
+          callback(timestamp);
+        });
+      }
+      return originalRAF.call(window, callback);
+    };
+  }
+
+  // --- First User Interaction Detection ---
+
+  function setupFirstInteractionDetection() {
+    var events = ['touchstart', 'mousedown', 'keydown'];
+
+    function onFirstInteraction() {
+      if (firstInteractionSent) return;
+      firstInteractionSent = true;
+      sendEvent('user_interaction_start', null);
+
+      for (var i = 0; i < events.length; i++) {
+        document.removeEventListener(events[i], onFirstInteraction, true);
+      }
+    }
+
+    for (var i = 0; i < events.length; i++) {
+      document.addEventListener(events[i], onFirstInteraction, true);
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupFirstInteractionDetection);
+  } else {
+    setupFirstInteractionDetection();
+  }
+
+  // --- Auto Error Capture ---
+
+  window.addEventListener('error', function(event) {
+    if (errorSent) return;
+    errorSent = true;
+    sendEvent('error', {
+      message: event.message || 'Unknown error',
+      source: event.filename || '',
+      lineno: event.lineno || 0,
+      colno: event.colno || 0,
+      auto_captured: true
+    });
+  });
+
+  window.addEventListener('unhandledrejection', function(event) {
+    if (errorSent) return;
+    errorSent = true;
+    var reason = event.reason;
+    sendEvent('error', {
+      message: (reason instanceof Error) ? reason.message : String(reason),
+      type: 'unhandled_promise_rejection',
+      auto_captured: true
+    });
+  });
+
+  // --- Public API ---
+
+  window.playablesSDK = {
+    complete: function(score) {
+      sendEvent('game_ended', {
+        score: score,
+        completed: true
+      });
+    },
+
+    error: function(message) {
+      if (errorSent) return;
+      errorSent = true;
+      sendEvent('error', {
+        message: message || 'Unknown error',
+        auto_captured: false
+      });
+    },
+
+    sendEvent: function(eventName, payload) {
+      if (!eventName || typeof eventName !== 'string') return;
+      sendEvent(eventName, payload);
+    }
+  };
+
+  // Kick off rAF detection in case no game code calls rAF immediately
+  if (originalRAF) {
+    originalRAF.call(window, onFrame);
+  }
+})();</script>
+<script>window.Intl=window.Intl||{};Intl.t=function(s){return(Intl._locale&&Intl._locale[s])||s;};</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#050507">
+<title>671.6 Hz Tone</title>
+<style>
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+  
+  html, body {
+    height: 100%;
+    overscroll-behavior: none;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    background: #050507;
+    color: #e5e7eb;
+    display: grid;
+    place-items: center;
+    min-height: 100vh;
+    padding: 16px;
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(800px 600px at 50% -10%, rgba(99,102,241,0.15), transparent 60%),
+                radial-gradient(600px 400px at 80% 120%, rgba(139,92,246,0.12), transparent 50%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .card {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 440px;
+    background: rgba(14,14,18,0.7);
+    backdrop-filter: blur(24px) saturate(140%);
+    -webkit-backdrop-filter: blur(24px) saturate(140%);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 32px;
+    padding: 40px 28px 32px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05);
+  }
+
+  .freq {
+    font-size: clamp(56px, 18vw, 84px);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1;
+    text-align: center;
+    background: linear-gradient(180deg, #ffffff 0%, #c7d2fe 70%, #a5b4fc 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 8px 32px rgba(99,102,241,0.25));
+    margin-bottom: 8px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .desc {
+    text-align: center;
+    color: #9ca3af;
+    font-size: 15px;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+  }
+
+  .wave-wrap {
+    position: relative;
+    margin: 36px 0 28px;
+    height: 140px;
+    border-radius: 20px;
+    overflow: hidden;
+    background: rgba(0,0,0,0.5);
+    border: 1px solid rgba(255,255,255,0.06);
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.8);
+  }
+
+  canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  .wave-glow {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(400px 80px at 50% 50%, rgba(99,102,241,0.15), transparent 70%);
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    pointer-events: none;
+  }
+
+  .playing .wave-glow {
+    opacity: 1;
+  }
+
+  .controls {
+    display: flex;
+    gap: 12px;
+    align-items: stretch;
+  }
+
+  button {
+    appearance: none;
+    border: none;
+    background: linear-gradient(180deg, #6366f1 0%, #4f46e5 100%);
+    color: white;
+    font-size: 18px;
+    font-weight: 600;
+    height: 68px;
+    padding: 0 28px;
+    border-radius: 18px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    flex-shrink: 0;
+    min-width: 132px;
+    box-shadow: 0 10px 24px rgba(79,70,229,0.35), inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.2);
+    transition: transform 0.08s ease, filter 0.2s ease;
+    touch-action: manipulation;
+    user-select: none;
+  }
+
+  button:active {
+    transform: scale(0.97);
+    filter: brightness(0.95);
+  }
+
+  button.playing {
+    background: linear-gradient(180deg, #ef4444 0%, #dc2626 100%);
+    box-shadow: 0 10px 24px rgba(220,38,38,0.3), inset 0 1px 0 rgba(255,255,255,0.15), inset 0 -1px 0 rgba(0,0,0,0.2);
+  }
+
+  button svg {
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+  }
+
+  .volume {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(0,0,0,0.45);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 18px;
+    padding: 0 18px;
+    height: 68px;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.5);
+  }
+
+  .volume svg {
+    width: 22px;
+    height: 22px;
+    opacity: 0.7;
+    flex-shrink: 0;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 44px;
+    background: transparent;
+    cursor: pointer;
+    touch-action: none;
+  }
+
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 6px;
+    background: linear-gradient(to right, #6366f1 0%, #6366f1 var(--pct, 50%), #27272a var(--pct, 50%), #27272a 100%);
+    border-radius: 3px;
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: white;
+    margin-top: -11px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.5), 0 0 0 1px rgba(0,0,0,0.1);
+    transition: transform 0.1s;
+  }
+
+  input[type="range"]:active::-webkit-slider-thumb {
+    transform: scale(1.1);
+  }
+
+  input[type="range"]::-moz-range-track {
+    height: 6px;
+    background: #27272a;
+    border-radius: 3px;
+  }
+
+  input[type="range"]::-moz-range-progress {
+    height: 6px;
+    background: #6366f1;
+    border-radius: 3px;
+  }
+
+  input[type="range"]::-moz-range-thumb {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: white;
+    border: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.5), 0 0 0 1px rgba(0,0,0,0.1);
+  }
+
+  .footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 18px;
+    min-height: 20px;
+  }
+
+  .timer {
+    font-size: 13px;
+    color: #71717a;
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+  }
+
+  .safety {
+    font-size: 12px;
+    color: #52525b;
+  }
+
+  @media (max-width: 400px) {
+    .card {
+      padding: 32px 22px 28px;
+      border-radius: 28px;
+    }
+    .controls {
+      flex-direction: column;
+    }
+    button {
+      width: 100%;
+      min-width: 0;
+    }
+    .volume {
+      width: 100%;
+    }
+  }
+</style>
+</head>
+<body>
+  <main class="card" id="card">
+    <h1 class="freq">671.6 Hz</h1>
+    <p class="desc">E5 +32 cents (between E5 and F5)</p>
+    
+    <div class="wave-wrap">
+      <canvas id="wave" width="924" height="414"></canvas>
+      <div class="wave-glow"></div>
+    </div>
+
+    <div class="controls">
+      <button id="playBtn" aria-label="Play 671.6 Hz tone">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v14l11-7-11-7Z"></path></svg>
+        <span>Play</span>
+      </button>
+      <div class="volume">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5L6 9H2v6h4l5 4V5z"></path><path d="M15.54 8.46a5 5 0 0 1 0 7.08"></path></svg>
+        <input id="vol" type="range" min="0" max="100" value="35" aria-label="Volume" style="--pct: 35%;">
+      </div>
+    </div>
+
+    <div class="footer">
+      <div class="timer" id="timer"></div>
+      <div class="safety">Auto-stop at 30s</div>
+    </div>
+  </main>
+
+<script>
+(() => {
+  const playBtn = document.getElementById('playBtn');
+  const volSlider = document.getElementById('vol');
+  const timerEl = document.getElementById('timer');
+  const card = document.getElementById('card');
+  const canvas = document.getElementById('wave');
+  const ctx = canvas.getContext('2d');
+  
+  let audioCtx = null;
+  let osc = null;
+  let gain = null;
+  let analyser = null;
+  let dataArray = null;
+  let isPlaying = false;
+  let stopTimeout = null;
+  let countdownId = null;
+  let startTime = 0;
+  const DURATION = 30;
+  const FREQ = 671.6;
+
+  const playIcon = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v14l11-7-11-7Z"/></svg><span>Play</span>';
+  const pauseIcon = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14Zm8-14v14h4V5h-4Z"/></svg><span>Pause</span>';
+
+  function updateVolumeUI() {
+    const pct = volSlider.value + '%';
+    volSlider.style.setProperty('--pct', pct);
+  }
+  updateVolumeUI();
+
+  function getGainValue() {
+    const v = volSlider.value / 100;
+    return v * v * 0.4; // max 0.4 for safety, quadratic curve
+  }
+
+  function initAudio() {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 2048;
+      analyser.smoothingTimeConstant = 0.85;
+      dataArray = new Uint8Array(analyser.frequencyBinCount);
+      gain = audioCtx.createGain();
+      gain.gain.value = 0;
+      gain.connect(analyser);
+      analyser.connect(audioCtx.destination);
+    }
+  }
+
+  async function start() {
+    initAudio();
+    if (audioCtx.state === 'suspended') await audioCtx.resume();
+    
+    if (osc) { try { osc.stop(); } catch(e) {} osc.disconnect(); }
+    
+    osc = audioCtx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(FREQ, audioCtx.currentTime);
+    
+    gain.gain.cancelScheduledValues(audioCtx.currentTime);
+    gain.gain.setValueAtTime(0, audioCtx.currentTime);
+    gain.gain.linearRampToValueAtTime(getGainValue(), audioCtx.currentTime + 0.05);
+    
+    osc.connect(gain);
+    osc.start();
+    
+    isPlaying = true;
+    startTime = Date.now();
+    card.classList.add('playing');
+    playBtn.classList.add('playing');
+    playBtn.innerHTML = pauseIcon;
+    playBtn.setAttribute('aria-label', 'Pause tone');
+    
+    clearTimeout(stopTimeout);
+    stopTimeout = setTimeout(stop, DURATION * 1000);
+    
+    clearInterval(countdownId);
+    countdownId = setInterval(updateTimer, 100);
+    updateTimer();
+  }
+
+  function stop() {
+    if (!isPlaying) return;
+    
+    if (gain && audioCtx) {
+      gain.gain.cancelScheduledValues(audioCtx.currentTime);
+      gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.08);
+    }
+    
+    setTimeout(() => {
+      if (osc) { try { osc.stop(); } catch(e) {} osc.disconnect(); osc = null; }
+    }, 100);
+    
+    isPlaying = false;
+    card.classList.remove('playing');
+    playBtn.classList.remove('playing');
+    playBtn.innerHTML = playIcon;
+    playBtn.setAttribute('aria-label', 'Play 671.6 Hz tone');
+    
+    clearTimeout(stopTimeout);
+    clearInterval(countdownId);
+    timerEl.textContent = '';
+  }
+
+  function toggle() {
+    isPlaying ? stop() : start();
+  }
+
+  function updateTimer() {
+    if (!isPlaying) return;
+    const elapsed = (Date.now() - startTime) / 1000;
+    const remain = Math.max(0, DURATION - Math.floor(elapsed));
+    timerEl.textContent = remain > 0 ? `Playing • ${remain}s left` : '';
+  }
+
+  volSlider.addEventListener('input', () => {
+    updateVolumeUI();
+    if (gain && audioCtx) {
+      gain.gain.cancelScheduledValues(audioCtx.currentTime);
+      gain.gain.setTargetAtTime(getGainValue(), audioCtx.currentTime, 0.01);
+    }
+  });
+
+  playBtn.addEventListener('click', toggle);
+  document.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' && e.target === document.body) {
+      e.preventDefault();
+      toggle();
+    }
+  });
+
+  // Canvas visualization
+  function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.scale(dpr, dpr);
+  }
+  
+  window.addEventListener('resize', resize);
+  resize();
+
+  function draw() {
+    requestAnimationFrame(draw);
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    
+    ctx.clearRect(0, 0, w, h);
+    
+    // grid
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, h/2);
+    ctx.lineTo(w, h/2);
+    ctx.stroke();
+    
+    if (isPlaying && analyser && dataArray) {
+      analyser.getByteTimeDomainData(dataArray);
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = '#a5b4fc';
+      ctx.shadowColor = 'rgba(99,102,241,0.8)';
+      ctx.shadowBlur = 16;
+      ctx.beginPath();
+      
+      const slice = w / dataArray.length;
+      let x = 0;
+      for (let i = 0; i < dataArray.length; i++) {
+        const v = (dataArray[i] - 128) / 128;
+        const y = h/2 + v * (h * 0.38);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+        x += slice;
+      }
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    } else {
+      // idle sine preview
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(113,113,122,0.5)';
+      ctx.beginPath();
+      const cycles = 6;
+      const t = Date.now() * 0.001;
+      for (let x = 0; x <= w; x += 2) {
+        const progress = x / w;
+        const y = h/2 + Math.sin(progress * Math.PI * 2 * cycles + t * 1.5) * 28;
+        if (x === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+  }
+  draw();
+
+  // Pause on hide for safety
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && isPlaying) stop();
+  });
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Omega Verified Artifact",
+  "type": "object",
+  "required": ["timestamp", "data", "verification"],
+  "properties": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "data": {
+      "type": "object",
+      "required": ["principal", "rate", "years"],
+      "properties": {
+        "principal": { "type": "number" },
+        "rate": { "type": "number" },
+        "years": { "type": "number" }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "required": ["hash", "signature", "publicKey", "authorityVerified"],
+      "properties": {
+        "hash": { "type": "string" },
+        "signature": { "type": "string" },
+        "publicKey": { "type": "string" },
+        "authorityVerified": { "type": "boolean" }
+      }
+    }
+  }
+}
