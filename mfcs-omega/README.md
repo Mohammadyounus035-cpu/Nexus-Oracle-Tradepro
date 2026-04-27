@@ -85,3 +85,4 @@ Start here:
 - `docs/oracle-overview.md`
 - `docs/laws/phi-A.md`
 - `OPERATOR.md`
+- `docs/pr-thread-triage-playbook.md`
