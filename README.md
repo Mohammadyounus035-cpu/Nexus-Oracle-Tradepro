@@ -1,22 +1,33 @@
-# Omega Lattice
+# HFCE
 
+HFCE is a TypeScript runtime for a coherence-governed, symbolically controlled state machine.
 [![Nexus Core CI](https://github.com/mohammadyounus128198-cyber/Work-/actions/workflows/nexus-core-ci.yml/badge.svg)](https://github.com/mohammadyounus128198-cyber/Work-/actions)
 
 A sophisticated monorepo implementing the **Omega Lattice** protocol: a high-performance WebSocket-driven lattice engine and a Next.js + Three.js visualization suite.
 
-This repository is intended as a developer-ready starting point you can run locally or import into Replit. It includes a simple engine (packages/engine), type facade (packages/types), a WS server (apps/server), and a Next web client (apps/web).
+## Core ideas
 
-Status: prototype — use for experimentation, visualization, and UI/UX integration.
+- State is bounded by invariants
+- Instructions mutate state through one authorized path
+- Faults are classified, not ignored
+- Every meaningful mutation is followed by observation and mirror inspection
+- Adaptation is bounded and can be frozen
 
----
+## Initial structure
 
-## Quick start
+- `src/core` — laws and pure logic
+- `src/engine` — runtime orchestration
+- `tests` — verification
+- `examples` — runnable references
 
-Requirements
-- Node.js 18+ recommended
-- pnpm (v7+ recommended) — the repo uses pnpm workspaces
-- (optional) Git & GitHub CLI if you intend to create/push a repo
+## Commands
 
+```bash
+npm install
+npm run check
+npm run test
+npm run dev
+```
 Run everything (development)
 1. Install packages:
    pnpm install
