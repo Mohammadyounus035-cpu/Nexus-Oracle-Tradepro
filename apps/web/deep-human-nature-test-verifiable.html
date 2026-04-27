@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deep Human Nature Test — Verifiable</title>
+<style>
+  body { margin:0; font-family: Arial; background:#000; color:#fff; }
+  h1 { text-align:center; color:#ff3b3b; }
+  #progress { width:80%; height:10px; background:#222; margin:20px auto; }
+  #bar { height:100%; width:0%; background:#ff0000; }
+  #container { text-align:center; padding:20px; }
+  button { margin:10px; padding:10px; border:1px solid #ff3b3b; background:#111; color:#fff; cursor:pointer; }
+  button:hover { background:#ff3b3b; }
+</style>
+</head>
+<body>
+<h1>Deep Human Nature Test</h1>
+<div id="progress"><div id="bar"></div></div>
+<div id="container">
+  <div id="quiz">
+    <div id="question"></div>
+    <div id="options"></div>
+  </div>
+  <div id="result" style="display:none;">
+    <h2>Verifiable Artifact</h2>
+    <pre id="artifact"></pre>
+    <button onclick="restart()">Retake</button>
+  </div>
+</div>
+<script>
+const questions = [
+ { q:"Door resets reality every 24h", a:["Enter","Study","Destroy"] },
+ { q:"Notebook writes future", a:["Read","Burn","Ignore"] },
+ { q:"Everyone speaks backwards", a:["Adapt","Panic","Observe"] }
+];
+
+let index=0;
+let responses=[];
+
+async function sha256(str){
+ const buf = new TextEncoder().encode(str);
+ const hash = await crypto.subtle.digest('SHA-256', buf);
+ return Array.from(new Uint8Array(hash)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+function canonical(obj){
+ return JSON.stringify(obj, Object.keys(obj).sort());
+}
+
+function load(){
+ const q=questions[index];
+ document.getElementById('question').textContent=q.q;
+ const optDiv=document.getElementById('options');
+ optDiv.innerHTML='';
+ q.a.forEach((opt,i)=>{
+  const b=document.createElement('button');
+  b.textContent=opt;
+  b.onclick=()=>select(i);
+  optDiv.appendChild(b);
+ });
+}
+
+function select(i){
+ responses.push(i);
+ index++;
+ updateBar();
+ if(index<questions.length) load();
+ else finalize();
+}
+
+function updateBar(){
+ document.getElementById('bar').style.width = (index/questions.length*100)+'%';
+}
+
+async function finalize(){
+ if(responses.length!==questions.length){ throw Error('Invariant breach'); }
+ 
+ const payload = {
+  timestamp: new Date().toISOString(),
+  responses,
+  questions: questions.map(q=>q.q)
+ };
+
+ const canon = canonical(payload);
+ const hash = await sha256(canon);
+
+ const artifact = {
+  ...payload,
+  verification: {
+    canonicalVersion:"v1",
+    hash
+  }
+ };
+
+ document.getElementById('quiz').style.display='none';
+ document.getElementById('result').style.display='block';
+ document.getElementById('artifact').textContent = JSON.stringify(artifact,null,2);
+}
+
+function restart(){ index=0; responses=[]; updateBar(); load(); document.getElementById('quiz').style.display='block'; document.getElementById('result').style.display='none'; }
+
+load();
+</script>
+</body>
+</html>

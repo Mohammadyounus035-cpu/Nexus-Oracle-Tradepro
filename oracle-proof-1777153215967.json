@@ -1,0 +1,24 @@
+{
+  "timestamp": "2026-04-25T21:39:53.286Z",
+  "system": {
+    "state": "HOLD",
+    "context": {
+      "output": 1,
+      "drift": 0
+    }
+  },
+  "data": {
+    "principal_cents": 16790,
+    "rate_bps": 500,
+    "years": 10,
+    "final_cents": 27549,
+    "gain_cents": 10559
+  },
+  "verification": {
+    "canonicalVersion": "v1",
+    "hash": "512c4771359c93bf1d4f918fbcc3578ad52e379e4224b07ecdd0c9d61847b3ac",
+    "signature": "149952dffe90f11551219125c7aecf8a352c24ce8818640d005a0d209e27df06090e7e5b0b18c371dd20ab52e0429fec31da9342af0f05b1b7342ba98dafaa07",
+    "publicKey": "MCowBQYDK2VwAyEAKccsyrVpp+LvRQ6BERx7xzfhOBJFtDfTHvWzgNtnmqs=",
+    "authorityVerified": true
+  }
+}

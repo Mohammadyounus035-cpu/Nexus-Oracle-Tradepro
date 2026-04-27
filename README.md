@@ -1,20 +1,33 @@
-# Omega Lattice
+# HFCE
 
-A minimal monorepo implementing the "Omega Lattice" proof-of-concept: a WebSocket-driven lattice engine (server) and a Next.js + Three.js client (web) that visualizes lattice state in 3D.
+HFCE is a TypeScript runtime for a coherence-governed, symbolically controlled state machine.
+[![Nexus Core CI](https://github.com/mohammadyounus128198-cyber/Work-/actions/workflows/nexus-core-ci.yml/badge.svg)](https://github.com/mohammadyounus128198-cyber/Work-/actions)
 
-This repository is intended as a developer-ready starting point you can run locally or import into Replit. It includes a simple engine (packages/engine), type facade (packages/types), a WS server (apps/server), and a Next web client (apps/web).
+A sophisticated monorepo implementing the **Omega Lattice** protocol: a high-performance WebSocket-driven lattice engine and a Next.js + Three.js visualization suite.
 
-Status: prototype — use for experimentation, visualization, and UI/UX integration.
+## Core ideas
 
----
+- State is bounded by invariants
+- Instructions mutate state through one authorized path
+- Faults are classified, not ignored
+- Every meaningful mutation is followed by observation and mirror inspection
+- Adaptation is bounded and can be frozen
 
-## Quick start
+## Initial structure
 
-Requirements
-- Node.js 18+ recommended
-- pnpm (v7+ recommended) — the repo uses pnpm workspaces
-- (optional) Git & GitHub CLI if you intend to create/push a repo
+- `src/core` — laws and pure logic
+- `src/engine` — runtime orchestration
+- `tests` — verification
+- `examples` — runnable references
 
+## Commands
+
+```bash
+npm install
+npm run check
+npm run test
+npm run dev
+```
 Run everything (development)
 1. Install packages:
    pnpm install
@@ -129,6 +142,55 @@ Set them before starting the web or use an .env approach in your dev environment
 - Bundle server as an API route for easier Replit deployment.
 
 ---
+
+
+## Truth-first interface guardrails
+
+When testing claims that include strong visuals + numeric anchors (e.g., `432 Hz`, `528 Hz`, "resonance" labels), treat them as **unverified inputs** unless they are bound to measurable evidence.
+
+Recommended contract for UI + engine:
+
+- **Provenance required**: every displayed metric must include source id, measurement method, and timestamp.
+- **Deterministic mapping**: visual state should be a pure function of validated state, not free text claims.
+- **Reproducibility**: values must be derivable from persisted inputs + code version.
+- **Invariant enforcement**: if a claim cannot be derived, block render or mark as unverified.
+- **Auditability**: hash-lock state transitions and keep an append-only event log for post-hoc verification.
+
+Suggested implementation path:
+
+1. Add `verification` metadata to lattice packets (`source`, `method`, `confidence`, `measured_at`).
+2. Reject packets that fail schema + invariant checks in `apps/server` before broadcast.
+3. In `apps/web`, render a "verified" badge only when proof metadata is complete.
+4. Add test vectors that intentionally include persuasive-but-invalid numeric claims and assert rejection.
+
+This keeps the system aligned with a simple rule: **if it cannot be derived, it cannot be displayed**.
+
+---
+
+
+## Visual state semantics (UI as state, not symbolism)
+
+The lattice visuals can be interpreted as concrete UI/state representations:
+
+- **Static state (baseline)**: a centered hexagon with uniform glow maps to a single authoritative state with no active transitions (e.g., `HOLD`, `drift = 0`, `input == anchor`).
+- **System envelope (bounded field)**: adding an outer sphere while the core remains unchanged maps to packaging the canonical payload with proof artifacts (`hash`, `signature`, `publicKey`) without mutating the payload itself.
+
+Progression:
+
+1. Compute canonical payload (`data`).
+2. Stabilize/validate invariants (`no drift`, deterministic output).
+3. Seal with proof metadata (`hash`, `signature`) for external verification.
+
+Important: visuals are representations only. Guarantees come from canonicalization, hashing/signing, verification checks, and tests.
+
+| Visual element | System equivalent |
+| --- | --- |
+| Hexagon core | Canonical state/payload |
+| Uniform glow | Deterministic output |
+| Stillness | No state transition firing |
+| Outer sphere | Signed + hashed envelope |
+| Center alignment | Invariant satisfied |
+| No distortion | Zero drift |
 
 ## Deploy
 
