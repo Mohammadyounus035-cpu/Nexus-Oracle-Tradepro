@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { canAssign, edgeCost } from "../packages/assignment-engine/src/domain/cost.js";
 import { canAssign, edgeCost, finiteEdgeCost } from "../packages/assignment-engine/src/domain/cost.js";
 import type { Item, Node } from "../packages/assignment-engine/src/domain/types.js";
 
