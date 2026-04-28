@@ -3,9 +3,6 @@
  * Phase 4: Real-time WebSocket market data with fallback polling
  */
 
-import { EventEmitter } from 'events';
-import { canonicalize, hashObject } from './integrity';
-
 export interface PriceTick {
   symbol: string;
   price: number;        // Integer cents
@@ -23,7 +20,38 @@ export interface MarketDepth {
   timestamp: number;
 }
 
-export class RealtimeMarketService extends EventEmitter {
+type EventListener = (...args: any[]) => void;
+
+class BrowserEventEmitter {
+  private listeners: Map<string, EventListener[]> = new Map();
+
+  on(event: string, listener: EventListener): this {
+    if (!this.listeners.has(event)) this.listeners.set(event, []);
+    this.listeners.get(event)!.push(listener);
+    return this;
+  }
+
+  off(event: string, listener: EventListener): this {
+    const arr = this.listeners.get(event);
+    if (arr) this.listeners.set(event, arr.filter(l => l !== listener));
+    return this;
+  }
+
+  emit(event: string, ...args: any[]): boolean {
+    const arr = this.listeners.get(event);
+    if (!arr || arr.length === 0) return false;
+    arr.forEach(listener => listener(...args));
+    return true;
+  }
+
+  removeAllListeners(event?: string): this {
+    if (event) this.listeners.delete(event);
+    else this.listeners.clear();
+    return this;
+  }
+}
+
+export class RealtimeMarketService extends BrowserEventEmitter {
   private ws: WebSocket | null = null;
   private subscriptions: Set<string> = new Set();
   private priceCache: Map<string, PriceTick> = new Map();
@@ -207,7 +235,7 @@ export class RealtimeMarketService extends EventEmitter {
 
   // Phase 3 integration: Verify price tick integrity
   async verifyTickIntegrity(tick: PriceTick): Promise<boolean> {
-    const hash = await hashObject({
+    const data = JSON.stringify({
       symbol: tick.symbol,
       price: tick.price,
       bid: tick.bid,
@@ -215,6 +243,8 @@ export class RealtimeMarketService extends EventEmitter {
       volume: tick.volume,
       timestamp: tick.timestamp
     });
-    return hash.length === 64; // SHA-256 length check
+    const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(data));
+    const hash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+    return hash.length === 64;
   }
 }

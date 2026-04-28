@@ -3,8 +3,29 @@
  * Phase 4: Automated trading strategies with risk integration
  */
 
-import { EventEmitter } from 'events';
 import { RealtimeMarketService, PriceTick } from './realtimeMarketService';
+
+type EventListener = (...args: any[]) => void;
+
+class BrowserEventEmitter {
+  private listeners: Map<string, EventListener[]> = new Map();
+  on(event: string, listener: EventListener): this {
+    if (!this.listeners.has(event)) this.listeners.set(event, []);
+    this.listeners.get(event)!.push(listener);
+    return this;
+  }
+  off(event: string, listener: EventListener): this {
+    const arr = this.listeners.get(event);
+    if (arr) this.listeners.set(event, arr.filter(l => l !== listener));
+    return this;
+  }
+  emit(event: string, ...args: any[]): boolean {
+    const arr = this.listeners.get(event);
+    if (!arr || arr.length === 0) return false;
+    arr.forEach(listener => listener(...args));
+    return true;
+  }
+}
 import { RiskManager } from './riskManager';
 import { OrderSide } from './engine';
 import { Portfolio } from './state';
@@ -28,7 +49,7 @@ export interface StrategySignal {
   timestamp: number;
 }
 
-export abstract class BaseStrategy extends EventEmitter {
+export abstract class BaseStrategy extends BrowserEventEmitter {
   protected lastTradeTime: Map<string, number> = new Map();
   protected activePositions: Map<string, { entryPrice: number; qty: number; entryTime: number }> = new Map();
 
@@ -155,7 +176,7 @@ export class MeanReversionStrategy extends BaseStrategy {
 }
 
 // Strategy Orchestrator: Manages multiple strategies
-export class StrategyOrchestrator extends EventEmitter {
+export class StrategyOrchestrator extends BrowserEventEmitter {
   private strategies: BaseStrategy[] = [];
 
   constructor(private marketService: RealtimeMarketService) {
