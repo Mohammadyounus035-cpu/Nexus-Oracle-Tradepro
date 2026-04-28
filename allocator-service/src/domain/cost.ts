@@ -24,6 +24,7 @@ export function canAssign(item: Item, node: Node): boolean {
  * @param item - The item being placed; relevant properties: `region`, `latencySensitivity`, and `risk`
  * @param node - The candidate node; relevant properties: `capacity`, `used`, `load`, and `region`
  * @returns A numeric cost where lower values indicate preferred placements; higher values indicate worse placements.
+ */
 export function edgeCost(item: Item, node: Node): number {
   const initialUtilization = node.capacity === 0 ? 1 : node.used / node.capacity;
 
