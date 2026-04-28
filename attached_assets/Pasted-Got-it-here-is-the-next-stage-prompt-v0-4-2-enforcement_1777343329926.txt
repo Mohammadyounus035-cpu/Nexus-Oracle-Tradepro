@@ -1,0 +1,238 @@
+Got it — here is the next-stage prompt (v0.4.2 enforcement layer).
+This is what you paste into Replit after the base app is generated to harden it into a provable system.
+
+⸻
+
+🔱 OMEGA v0.4.2 — ENFORCEMENT PATCH PROMPT
+
+Upgrade the existing lattice app into a fully deterministic, verifiable system with strict integrity enforcement, invariant guards, and zero-drift rendering.
+
+⸻
+
+🧠 1. Canonical State Lock (Single Truth)
+
+* Introduce a CanonicalState object
+* Freeze it after each tick:
+    * No mutation outside engine
+* All subsystems (UI, metrics, graph) must read from this only
+
+If any component derives state independently → THROW
+
+⸻
+
+🔐 2. Stable Serialization + Hashing
+
+* Implement deterministic serialization:
+    * Sorted keys
+    * No floating ambiguity
+* Compute:
+
+stateHash = sha256(stableStringify(canonicalState))
+
+* Store per tick
+
+⸻
+
+🎨 3. Verify-Before-Render (CRITICAL)
+
+Replace render pipeline with:
+
+deriveVisual = mapStateToVisual(canonicalState)
+visualHash = sha256(stableStringify(deriveVisual))
+IF visualHash !== expectedVisualHash:
+    BLOCK RENDER
+    THROW "Invariant breach: visual mismatch"
+ELSE:
+    render()
+
+The pixel must NEVER render unverified state
+
+⸻
+
+🧾 4. Three-Lock System
+
+Attach to every tick:
+
+* decisionHash
+* stateHash
+* visualHash
+
+Display in UI:
+
+* VERIFIED ✅
+* FAILED ❌
+
+⸻
+
+🪞 5. WORLD_DRIFT Calculation
+
+WORLD_DRIFT = difference(previousHash, currentHash)
+
+* Should remain:
+
+0.0% when deterministic
+
+If drift detected:
+
+* trigger warning
+* log divergence
+
+⸻
+
+🧯 6. Snapshot + Rollback (Zero Bleed)
+
+* Save snapshot every tick
+* On ANY:
+    * invariant violation
+    * hash mismatch
+    * invalid transition
+
+→ rollback to last valid snapshot
+
+⸻
+
+⚖️ 7. Invariant Enforcement (Fail Hard)
+
+Add runtime guards:
+
+* No undefined node references
+* No illegal state transitions
+* Energy must remain within bounds (0–1)
+* Links must be valid
+
+If violated:
+
+throw Error("Invariant breach: [type]")
+
+NO silent recovery.
+
+⸻
+
+🧪 8. Deterministic Engine Rules
+
+* Remove ALL randomness
+* All transitions must be:
+    * reproducible
+    * input-driven only
+
+Same input → same output ALWAYS
+
+⸻
+
+🔮 9. Prediction Mode Isolation
+
+* Clone canonical state
+* Run simulation on clone ONLY
+* Mark as:
+    * ghost layer
+    * visually distinct
+
+Never mutate real state
+
+⸻
+
+🧵 10. Golden Thread (Deterministic)
+
+* Compute:
+    * mostStableNode
+    * highestInfluenceNode
+* Use deterministic shortest-path
+
+Render consistently every tick
+
+⸻
+
+📊 11. Metrics Integrity
+
+All metrics must be derived ONLY from canonical state:
+
+* resonance
+* phiSync
+* polarity
+* momentum
+
+If any metric diverges:
+→ block display
+
+⸻
+
+🧠 12. DECIDE → EXECUTE → VERIFY Pipeline
+
+Add system pipeline:
+
+1. DECIDE (compute next state)
+2. EXECUTE (apply state)
+3. VERIFY (hash + invariants)
+
+Only after VERIFY passes → allow render
+
+Display pipeline status in UI
+
+⸻
+
+🔒 13. Environment Lock
+
+* Enforce consistent runtime behavior:
+    * deterministic math
+    * stable JSON output
+* Prevent hidden drift sources
+
+⸻
+
+🧾 14. Audit Log (Append-Only)
+
+* Log per tick:
+    * state
+    * hashes
+    * timestamp
+
+Store locally (append-only)
+
+NO overwrites
+
+⸻
+
+🧪 15. Golden Test Case
+
+Include fixed test vector:
+
+* same initial state
+* run N ticks
+* verify:
+    * identical hashes across runs
+
+If mismatch:
+→ FAIL SYSTEM
+
+⸻
+
+🎯 FINAL LAW
+
+The system must not render unless it is proven correct.
+
+⸻
+
+🔱 RESULT
+
+After this patch, your app becomes:
+
+* Deterministic ✅
+* Verifiable ✅
+* Reproducible ✅
+* Tamper-evident ✅
+* Zero-drift enforced ✅
+
+⸻
+
+If you apply this, your Replit app stops being a visualization…
+
+…and becomes a proof system.
+
+⸻
+
+If you want the final step after this, I can give you:
+
+→ “Public Verifiability Layer”
+(where anyone can independently verify your lattice from outside your app, not just inside it)
+
+That’s where it crosses from correct system → trusted system.

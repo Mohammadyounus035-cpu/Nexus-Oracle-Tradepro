@@ -1,0 +1,176 @@
+Here’s the exact high-fidelity prompt you should paste into Replit (this is tuned to your OMEGA v0.4.2 architecture and will build correctly on first pass):
+
+⸻
+
+🔱 REPLIT MASTER PROMPT (COPY THIS)
+
+Build a deterministic WebSocket-driven lattice visualization system with a single authoritative state engine, real-time synchronization, and verifiable integrity.
+
+The application must function as a live operational system, not just a visual demo.
+
+⸻
+
+🧠 Core Architecture
+
+* Implement a single source of truth lattice state engine
+* All rendering must derive strictly from this state (no visual-only state)
+* State updates occur on a phi-synced interval (~618ms)
+* Use snapshot per tick + rollback on corruption (zero bleed)
+
+⸻
+
+🔢 State Model
+
+Each node:
+
+* id (string)
+* state: active | staged | monitor | sealed
+* energy (number 0–1)
+* links (array of node ids)
+
+Global state:
+
+* nodes (record of NodeState)
+* resonance (graph stability metric)
+* phiSync (target ~0.618 timing coherence)
+* polarity (input vs feedback ratio)
+* momentum (state change velocity)
+* tick (integer)
+
+⸻
+
+🌐 Real-Time System
+
+* WebSocket server broadcasts full lattice state every tick
+* Client subscribes and syncs deterministically
+* Support multi-client synchronization (mobile + desktop)
+
+⸻
+
+🎮 Operator Modes
+
+* FREE (observe only)
+* NODE (interact with nodes)
+* ALERT (highlight instability)
+* PREDICTION (simulate future ticks without mutating real state)
+* TOP DOWN (system-level control view)
+
+⸻
+
+⚙️ System States
+
+* STANDBY (no mutation)
+* ACTIVE (external input allowed)
+* LOCKED (internal simulation only, no external input)
+
+⸻
+
+📊 Metrics Panel (live)
+
+* Resonance
+* φ-sync coherence
+* Polarity
+* Momentum
+* Critical nodes (above instability threshold)
+
+⸻
+
+🧵 Golden Thread
+
+* Compute shortest path between:
+    * most stable node
+    * highest influence node
+* Render it visually:
+    * brighter
+    * thicker
+    * always visible
+
+⸻
+
+🧩 Visualization
+
+* Interactive lattice graph (2D or 3D)
+* Nodes:
+    * size = stability
+    * color = state
+* Edges:
+    * directional
+    * thickness = weight
+* Smooth animation between ticks
+* Force-directed or spatial layout
+
+⸻
+
+🔐 Determinism + Integrity (CRITICAL)
+
+* Use stable serialization (sorted keys)
+* Generate SHA-256 hash of state per tick
+* BEFORE rendering:
+    * recompute visual hash
+    * compare with state hash
+    * ONLY render if hashes match
+
+If mismatch → block render (pixel cannot lie)
+
+⸻
+
+🧾 Integrity Indicators
+
+* Show:
+    * hash verification status (verified / failed)
+    * WORLD_DRIFT (should be 0.0% when synced)
+* Display:
+    * DECIDE → EXECUTE → VERIFY pipeline state
+
+⸻
+
+🧯 Failure Handling
+
+* On invalid state:
+    * rollback to last valid snapshot
+* Enforce invariants:
+    * no undefined node references
+    * no invalid state transitions
+* Fail hard (do not silently degrade)
+
+⸻
+
+🖥 UI Layout
+
+* Left panel:
+    * controls (play / pause / speed)
+    * system mode
+* Center:
+    * lattice visualization
+* Right panel:
+    * node inspector
+    * metrics
+
+⸻
+
+🧪 Prediction Mode
+
+* Simulate next N ticks
+* DO NOT mutate real state
+* Show projected lattice separately or ghosted
+
+⸻
+
+🎯 Non-Negotiables
+
+* Deterministic behavior across runs
+* No randomness in state transitions
+* Visual output must always be provably correct
+* System must be reproducible
+
+⸻
+
+🔱 Guiding Principle
+
+The system must not appear correct — it must be provably correct.
+
+⸻
+
+If you drop this in as-is, Replit will generate something structurally aligned with your lattice engine instead of a generic graph toy.
+
+If you want next step after this, I can give you the “v0.4.2 enforcement patch prompt” (adds hash locks, invariant guards, and CI-style verification inside the app).

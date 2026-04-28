@@ -5,6 +5,9 @@ import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import * as THREE from "three";
 import GlassCard from "../components/GlassCard";
 import WebGLGuard from "../components/WebGLGuard";
+import IntegrityPanel from "../components/IntegrityPanel";
+import VerifyPipelinePanel from "../components/VerifyPipelinePanel";
+import OperatorModePanel from "../components/OperatorModePanel";
 import { Shield, Zap, Diamond, Crosshair, Lock } from "lucide-react";
 
 interface ShellConfig {
@@ -126,33 +129,44 @@ export default function LatticePage() {
       </Canvas>
       </WebGLGuard>
 
-      {/* Overlays */}
-      <GlassCard className="absolute top-6 left-6 p-4 w-72 bg-black/60">
-        <h3 className="text-primary font-mono text-xs mb-4">OBSERVED METRICS</h3>
-        <div className="space-y-2 font-mono text-sm">
-          <div className="flex justify-between"><span className="text-muted-foreground">NODES (ACTIVE)</span><span className="text-foreground">167</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">LOOP SCOPE</span><span className="text-foreground">0.28</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">AVG ENERGY</span><span className="text-foreground">0.63</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">COHERENCE</span><span className="text-foreground">0.71</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">COMPLEXITY</span><span className="text-foreground">0.58</span></div>
-          <div className="flex justify-between pt-2 border-t border-border/30"><span className="text-accent">FIELD STABILITY</span><span className="text-accent glow-text">87%</span></div>
-        </div>
-      </GlassCard>
+      {/* Left column overlays */}
+      <div className="absolute top-6 left-6 w-80 space-y-3">
+        <GlassCard className="p-4 bg-black/60">
+          <h3 className="text-primary font-mono text-xs mb-4">OBSERVED METRICS</h3>
+          <div className="space-y-2 font-mono text-sm">
+            <div className="flex justify-between"><span className="text-muted-foreground">NODES (ACTIVE)</span><span className="text-foreground">167</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">LOOP SCOPE</span><span className="text-foreground">0.28</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">AVG ENERGY</span><span className="text-foreground">0.63</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">COHERENCE</span><span className="text-foreground">0.71</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">COMPLEXITY</span><span className="text-foreground">0.58</span></div>
+            <div className="flex justify-between pt-2 border-t border-border/30"><span className="text-accent">FIELD STABILITY</span><span className="text-accent glow-text">87%</span></div>
+          </div>
+        </GlassCard>
 
-      <GlassCard className="absolute top-6 right-6 p-4 bg-black/60">
-        <h3 className="text-primary font-mono text-xs mb-4">KEY TO NODES</h3>
-        <div className="space-y-2 font-mono text-xs">
-          {SHELLS.map(shell => (
-            <div key={shell.name} className="flex items-center gap-3">
-              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: shell.color, boxShadow: `0 0 8px ${shell.color}` }} />
-              <span className="text-muted-foreground">{shell.name}</span>
-            </div>
-          ))}
-        </div>
-      </GlassCard>
+        <IntegrityPanel />
+      </div>
 
-      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-full max-w-4xl px-6">
-        <h3 className="text-primary font-mono text-xs mb-3 text-center">FUNCTION STACK</h3>
+      {/* Right column overlays */}
+      <div className="absolute top-6 right-6 w-80 space-y-3">
+        <GlassCard className="p-4 bg-black/60">
+          <h3 className="text-primary font-mono text-xs mb-4">KEY TO NODES</h3>
+          <div className="space-y-2 font-mono text-xs">
+            {SHELLS.map(shell => (
+              <div key={shell.name} className="flex items-center gap-3">
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: shell.color, boxShadow: `0 0 8px ${shell.color}` }} />
+                <span className="text-muted-foreground">{shell.name}</span>
+              </div>
+            ))}
+          </div>
+        </GlassCard>
+
+        <OperatorModePanel />
+      </div>
+
+      {/* Bottom: verify pipeline + function stack */}
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-full max-w-5xl px-6 space-y-3">
+        <VerifyPipelinePanel />
+
         <div className="grid grid-cols-5 gap-3">
           {[
             { icon: Shield, label: "STABILIZE" },
@@ -161,9 +175,9 @@ export default function LatticePage() {
             { icon: Crosshair, label: "TRACE" },
             { icon: Lock, label: "LOCK" }
           ].map(fn => (
-            <GlassCard key={fn.label} className="p-3 text-center cursor-pointer hover:bg-primary/10 transition-colors bg-black/60 group">
-              <fn.icon className="w-6 h-6 mx-auto mb-2 text-muted-foreground group-hover:text-primary transition-colors" />
-              <div className="font-mono text-[10px] text-foreground">{fn.label}</div>
+            <GlassCard key={fn.label} className="p-2 text-center cursor-pointer hover:bg-primary/10 transition-colors bg-black/60 group">
+              <fn.icon className="w-4 h-4 mx-auto mb-1 text-muted-foreground group-hover:text-primary transition-colors" />
+              <div className="font-mono text-[9px] text-foreground tracking-widest">{fn.label}</div>
             </GlassCard>
           ))}
         </div>
