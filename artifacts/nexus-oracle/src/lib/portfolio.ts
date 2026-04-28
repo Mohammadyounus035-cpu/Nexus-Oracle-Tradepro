@@ -80,7 +80,8 @@ export class PortfolioManager {
       cash: new Money(this.cash),
       totalValue: new Money(this.cash + positionsValue),
       dayPnl: new Money(dayPnl),
-      totalPnl: new Money(totalPnl)
+      totalPnl: new Money(totalPnl),
+      positions: this.positions
     };
   }
 }
