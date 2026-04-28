@@ -3,8 +3,17 @@ import { motion } from "framer-motion";
 import { Eye, Activity } from "lucide-react";
 import GlassCard from "../components/GlassCard";
 import MiniLattice from "../components/MiniLattice";
+import { generateHeadline } from "../lib/newsFeed";
 
-const MOCK_SIGNALS = [
+interface ConsoleSignal {
+  symbol: string;
+  text: string;
+  source: string;
+  score: number;
+  category?: string;
+}
+
+const MOCK_SIGNALS: ConsoleSignal[] = [
   { symbol: "NVDA", text: "Volume surge 4x average", source: "POLYGON", score: 85 },
   { symbol: "AAPL", text: "Options sweep call side", source: "OPRA", score: 72 },
   { symbol: "TSLA", text: "Sentiment drop detected", source: "SOCIAL", score: 41 },
@@ -14,14 +23,31 @@ const MOCK_SIGNALS = [
 ];
 
 export default function Console() {
-  const [signals, setSignals] = useState(MOCK_SIGNALS);
+  const [signals, setSignals] = useState<ConsoleSignal[]>(MOCK_SIGNALS);
 
   useEffect(() => {
     const interval = setInterval(() => {
       setSignals(prev => {
         const next = [...prev];
-        const newSignal = prev[Math.floor(Math.random() * prev.length)];
-        next.unshift({ ...newSignal, score: Math.floor(Math.random() * 40) + 50 });
+        if (Math.random() < 0.5) {
+          const head = generateHeadline();
+          const baseScore =
+            head.sentiment === "bullish"
+              ? 70 + Math.floor(Math.random() * 25)
+              : head.sentiment === "bearish"
+              ? 25 + Math.floor(Math.random() * 30)
+              : 45 + Math.floor(Math.random() * 25);
+          next.unshift({
+            symbol: head.symbol,
+            text: head.headline,
+            source: head.source,
+            score: baseScore,
+            category: head.category,
+          });
+        } else {
+          const seed = MOCK_SIGNALS[Math.floor(Math.random() * MOCK_SIGNALS.length)];
+          next.unshift({ ...seed, score: Math.floor(Math.random() * 40) + 50 });
+        }
         if (next.length > 12) next.pop();
         return next;
       });

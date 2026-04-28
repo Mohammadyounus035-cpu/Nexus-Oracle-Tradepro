@@ -2,6 +2,7 @@ import { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { Activity, Clock } from "lucide-react";
 import BrandMark from "./BrandMark";
+import NewsTicker from "./NewsTicker";
 
 export default function Layout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
@@ -58,6 +59,9 @@ export default function Layout({ children }: { children: ReactNode }) {
           </div>
         </div>
       </header>
+
+      {/* News Wire Ticker */}
+      <NewsTicker />
 
       {/* Main Content */}
       <main className="flex-1 relative overflow-hidden">
