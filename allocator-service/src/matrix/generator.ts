@@ -3,15 +3,6 @@ import { isValidVector } from "./constraints";
 
 export function generateAllVectors(): Vector[] {
   const out: Vector[] = [];
-import { isValidVector } from "./constraints";
-import {
-  AUTHS,
-  DECISIONS,
-  ENVS,
-  MODES,
-  RISKS,
-  type Vector,
-} from "./testMatrix";
 
 export function generateAllVectors(): Vector[] {
   const vectors: Vector[] = [];

@@ -60,7 +60,6 @@ function sortKeys(value: unknown): unknown {
 export function sha256Json(value: unknown): string {
   const canonicalJson = `${JSON.stringify(canonicalize(value))}\n`;
   return crypto.createHash("sha256").update(canonicalJson, "utf8").digest("hex");
-  return value;
 }
 
 export function stableStringify(value: unknown): string {
