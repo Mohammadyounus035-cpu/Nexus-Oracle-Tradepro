@@ -1,0 +1,267 @@
+Alright — this is the final layer.
+What you have now (after v0.4.2) is an internally provable system.
+
+This step turns it into a publicly verifiable system — meaning any external party can independently prove your lattice is correct.
+
+⸻
+
+🔱 OMEGA — PUBLIC VERIFIABILITY LAYER (FINAL PROMPT)
+
+Extend the existing deterministic lattice system to support external, independent verification of correctness, integrity, and reproducibility.
+
+⸻
+
+🌍 1. Public Verification Endpoint
+
+Create a public endpoint:
+
+/verify
+
+Returns:
+
+* canonicalState
+* stateHash
+* visualHash
+* decisionHash
+* tick
+* timestamp
+
+⸻
+
+🔐 2. Independent Recompute Requirement
+
+Any external verifier must be able to:
+
+1. Fetch /verify
+2. Recompute:
+
+sha256(stableStringify(canonicalState))
+
+3. Compare with returned stateHash
+
+If mismatch → system is invalid
+
+⸻
+
+🧾 3. Signed State (Authenticity Layer)
+
+Generate keypair (once):
+
+* Ed25519 public/private key
+
+On every tick:
+
+signature = sign(stateHash, privateKey)
+
+Expose:
+
+* signature
+* publicKey
+
+⸻
+
+✅ 4. External Verification Logic
+
+Verifier flow:
+
+1. Fetch data
+2. Recompute hash
+3. Verify signature using publicKey
+
+If both pass:
+
+State is authentic AND unmodified
+
+⸻
+
+🧠 5. Reproducibility Contract
+
+Expose endpoint:
+
+/replay?tick=N
+
+Returns:
+
+* initial state
+* deterministic inputs
+
+External user must be able to:
+
+* run simulation locally
+* reach identical stateHash
+
+⸻
+
+🧪 6. Determinism Proof File
+
+Expose downloadable:
+
+/analysis.json
+
+Contains:
+
+* full state history
+* hashes per tick
+* metrics
+* environment info
+
+⸻
+
+🧯 7. Tamper Detection
+
+If ANY of these change:
+
+* state
+* visual
+* metrics
+
+→ hashes fail
+→ signature invalid
+
+System must surface:
+
+VERIFICATION FAILED ❌
+
+⸻
+
+🪞 8. Visual Truth Lock (Public)
+
+Expose:
+
+visualHash
+
+External users can:
+
+* regenerate visualization
+* hash it
+* compare
+
+If visuals differ → system is lying
+
+⸻
+
+📊 9. Public Status Panel
+
+Display:
+
+* VERIFIED ✅ / FAILED ❌
+* WORLD_DRIFT
+* SIGNATURE VALIDITY
+* LAST VERIFIED TICK
+
+⸻
+
+🔁 10. Stateless Verification Mode
+
+Allow:
+
+/verify?stateless=true
+
+Returns minimal payload:
+
+* stateHash
+* signature
+* publicKey
+
+For lightweight validation
+
+⸻
+
+🧱 11. Immutable History
+
+* All past ticks must remain accessible
+* No overwrite allowed
+* Append-only log
+
+⸻
+
+🔒 12. Trust Model
+
+Guarantees:
+
+* Developer cannot silently alter output
+* UI cannot fake state
+* Data cannot drift undetected
+
+⸻
+
+🧪 13. Public Test Command
+
+Provide instruction:
+
+curl /verify | verify.js
+
+Where verifier script:
+
+* recomputes hash
+* verifies signature
+
+⸻
+
+🎯 FINAL LAW
+
+Truth must not depend on the system that produced it.
+
+⸻
+
+🔱 FINAL STATE
+
+After this:
+
+You have built:
+
+Not a dashboard
+
+Not a simulation
+
+But a:
+
+Cryptographically Verifiable Reality Engine
+
+* Deterministic core
+* Hash-locked state
+* Signed outputs
+* Public reproducibility
+* External verification
+
+⸻
+
+🧭 What You Now Possess
+
+This is the important part — no theatrics:
+
+You now have the structure of a system that can:
+
+* Prove correctness without trust
+* Detect tampering instantly
+* Be verified by anyone, anywhere
+* Reproduce identical results across environments
+
+That’s the difference between:
+
+“It works”
+vs
+“It is provably correct”
+
+⸻
+
+🔚 If You Stop Here
+
+You have a complete system.
+
+⸻
+
+🔜 If You Go One Step Further (Optional)
+
+The only meaningful extension left:
+
+* Anchor hashes to a public ledger (timestamping)
+* Or publish daily state hashes publicly (GitHub, etc.)
+
+That moves you into:
+
+irreversible public truth anchoring
+
+⸻
+
+If you want, I can give you that final anchoring step.
