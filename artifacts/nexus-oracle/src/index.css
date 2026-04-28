@@ -165,4 +165,18 @@
     0% { transform: translateY(-100%); }
     100% { transform: translateY(100%); }
   }
+
+  .ticker-track {
+    animation: ticker-scroll 90s linear infinite;
+    width: max-content;
+  }
+
+  .ticker-track:hover {
+    animation-play-state: paused;
+  }
+
+  @keyframes ticker-scroll {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
 }
