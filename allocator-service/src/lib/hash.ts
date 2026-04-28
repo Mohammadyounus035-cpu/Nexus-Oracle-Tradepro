@@ -1,13 +1,5 @@
 import crypto from "node:crypto";
 
-/**
- * Compute the SHA-256 hash of the JSON representation of a value.
- *
- * @param value - Value to serialize with `JSON.stringify` before hashing
- * @returns Hex-encoded SHA-256 digest of the serialized value
- */
-export function sha256Json(value: unknown): string {
-  return crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
 function normalizeString(value: string): string {
   return value.replace(/\r\n?/g, "\n");
 }
@@ -31,19 +23,10 @@ function normalizeNumber(value: number): number {
 function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map(canonicalize);
-function sortKeys(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((entry) => sortKeys(entry));
   }
 
   if (value && typeof value === "object") {
-    return Object.keys(value as Record<string, unknown>)
-      .sort()
-      .reduce<Record<string, unknown>>((acc, key) => {
-        acc[key] = canonicalize((value as Record<string, unknown>)[key]);
-        acc[key] = sortKeys((value as Record<string, unknown>)[key]);
-        return acc;
-      }, {});
+    return sortKeys(value);
   }
 
   if (typeof value === "string") {
@@ -57,6 +40,29 @@ function sortKeys(value: unknown): unknown {
   return value;
 }
 
+function sortKeys(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((entry) => sortKeys(entry));
+  }
+
+  if (value && typeof value === "object") {
+    return Object.keys(value as Record<string, unknown>)
+      .sort()
+      .reduce<Record<string, unknown>>((acc, key) => {
+        acc[key] = canonicalize((value as Record<string, unknown>)[key]);
+        return acc;
+      }, {});
+  }
+
+  return value;
+}
+
+/**
+ * Compute the SHA-256 hash of the JSON representation of a value.
+ *
+ * @param value - Value to serialize with `JSON.stringify` before hashing
+ * @returns Hex-encoded SHA-256 digest of the serialized value
+ */
 export function sha256Json(value: unknown): string {
   const canonicalJson = `${JSON.stringify(canonicalize(value))}\n`;
   return crypto.createHash("sha256").update(canonicalJson, "utf8").digest("hex");
@@ -68,15 +74,7 @@ export function stableStringify(value: unknown): string {
 
 export function sha256(value: string): string {
   return crypto.createHash("sha256").update(value).digest("hex");
-function stableStringify(value: unknown): string {
-export function stableStringify(value: unknown): string {
-  if (value === null || typeof value !== "object") {
-    return JSON.stringify(value);
-  }
-
-  if (Array.isArray(value)) {
-    return `[${value.map((entry) => stableStringify(entry)).join(",")}]`;
-  }
+}
 
   const objectValue = value as Record<string, unknown>;
   const keys = Object.keys(objectValue)
