@@ -1,0 +1,43 @@
+name: Simulation CI
+on:
+  push:
+    paths:
+      - 'simulation/**'
+      - '.github/workflows/simulation-ci.yml'
+  pull_request:
+    paths:
+      - 'simulation/**'
+      - '.github/workflows/simulation-ci.yml'
+
+jobs:
+  simulation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          cd simulation
+          pip install -r requirements.txt
+
+      - name: Run lattice topology analysis
+        run: |
+          cd simulation
+          python sovereign_lattice.py
+
+      - name: Run multi-platform simulation
+        run: |
+          cd simulation
+          python nexus_simulation.py
+
+      - name: Upload simulation outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: simulation-results
+          path: simulation/*.png

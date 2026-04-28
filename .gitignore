@@ -6,3 +6,90 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Sensitive files
+github-recovery-codes.txt
+*.key
+*.pem
+secrets.json
+
+# Temporary files and clutter
+*.tmp
+*~
+*.swp
+*.bak
+
+# OS files
+Thumbs.db
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode/settings.json
+.idea/
+*.suo
+*.user
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git
+.mypy_cache
+.pytest_cache
+.hypothesis
+
+# Node.js
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Images and media (except specific ones)
+*.jfif
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tiff
+*.webp
+!assets/
+!public/
+
+# Archives
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# Office documents (duplicates)
+* (1).*
+* (2).*
+* (3).*
+* (4).*
+
+# Logs and outputs
+*.out
+*.log
+tlc.log
+tlaps.log
