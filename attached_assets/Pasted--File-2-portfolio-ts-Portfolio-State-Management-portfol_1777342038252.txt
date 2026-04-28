@@ -1,0 +1,302 @@
+
+# File 2: portfolio.ts — Portfolio State Management
+portfolio_ts = '''/**
+ * portfolio.ts — Portfolio State Management
+ * 
+ * Cents-based arithmetic, invariant enforcement, secureExecute integration.
+ * All monetary values stored as integers (cents) to avoid float drift.
+ */
+
+import { canonicalHash } from '../deep-human-nature-test/canonical.js';
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export interface Position {
+  symbol: string;
+  shares: number;         // Whole shares only
+  avgCost: number;        // Average cost per share in cents
+  currentPrice: number;   // Current market price in cents
+}
+
+export interface Order {
+  id: string;
+  symbol: string;
+  side: 'buy' | 'sell';
+  shares: number;
+  price: number;          // Limit price in cents (0 = market)
+  timestamp: string;
+  status: 'pending' | 'filled' | 'rejected';
+}
+
+export interface Trade {
+  orderId: string;
+  symbol: string;
+  side: 'buy' | 'sell';
+  shares: number;
+  price: number;          // Execution price in cents
+  total: number;          // Total value in cents
+  timestamp: string;
+  proof?: BoundProof;     // From secureExecute
+}
+
+export interface BoundProof {
+  hash: string;
+  signature: string;
+  publicKey: string;
+  timestamp: string;
+  canonicalPayload: string;
+}
+
+export interface Portfolio {
+  cash: number;           // Available cash in cents
+  positions: Position[];
+  trades: Trade[];
+  totalValue: number;     // Cash + position values
+  dayPnL: number;         // Today's P&L in cents
+  totalPnL: number;       // All-time P&L in cents
+}
+
+// ---------------------------------------------------------------------------
+// Invariant: All monetary values are integers (cents)
+// ---------------------------------------------------------------------------
+
+function assertCents(value: number, name: string): void {
+  if (!Number.isInteger(value)) {
+    throw new Error(`Invariant violation: ${name} must be integer cents, got ${value}`);
+  }
+  if (value < 0) {
+    throw new Error(`Invariant violation: ${name} cannot be negative, got ${value}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Portfolio Manager
+// ---------------------------------------------------------------------------
+
+export class PortfolioManager {
+  private portfolio: Portfolio;
+  private listeners: Set<(p: Portfolio) => void> = new Set();
+
+  constructor(initialCash: number = 100000_00) { // $100,000.00
+    assertCents(initialCash, 'initialCash');
+    this.portfolio = {
+      cash: initialCash,
+      positions: [],
+      trades: [],
+      totalValue: initialCash,
+      dayPnL: 0,
+      totalPnL: 0,
+    };
+  }
+
+  getPortfolio(): Portfolio {
+    return { ...this.portfolio, positions: [...this.portfolio.positions], trades: [...this.portfolio.trades] };
+  }
+
+  subscribe(listener: (p: Portfolio) => void): () => void {
+    this.listeners.add(listener);
+    listener(this.getPortfolio());
+    return () => this.listeners.delete(listener);
+  }
+
+  private notify() {
+    const snapshot = this.getPortfolio();
+    this.listeners.forEach(l => l(snapshot));
+  }
+
+  /**
+   * Execute an order with secureExecute verification wrapper.
+   * All trades produce a BoundProof for audit trail.
+   */
+  async executeOrder(order: Order, currentPrice: number): Promise<Trade> {
+    assertCents(currentPrice, 'currentPrice');
+    
+    // Validate order
+    if (order.shares <= 0) {
+      throw new Error('Order must be for positive share count');
+    }
+    
+    const executionPrice = order.price > 0 ? order.price : currentPrice;
+    const total = executionPrice * order.shares;
+    
+    // Pre-trade invariants
+    if (order.side === 'buy' && total > this.portfolio.cash) {
+      throw new Error(`Insufficient cash: need $${(total/100).toFixed(2)}, have $${(this.portfolio.cash/100).toFixed(2)}`);
+    }
+    
+    if (order.side === 'sell') {
+      const pos = this.portfolio.positions.find(p => p.symbol === order.symbol);
+      if (!pos || pos.shares < order.shares) {
+        throw new Error(`Insufficient shares: own ${pos?.shares || 0}, selling ${order.shares}`);
+      }
+    }
+    
+    // Build canonical payload for secureExecute
+    const payload = {
+      version: 'trade-1.0',
+      orderId: order.id,
+      symbol: order.symbol,
+      side: order.side,
+      shares: order.shares,
+      price: executionPrice,
+      total,
+      timestamp: new Date().toISOString(),
+      preCash: this.portfolio.cash,
+    };
+    
+    // Call secureExecute wrapper (produces BoundProof)
+    const proof = await this.secureExecute(payload);
+    
+    // Apply trade
+    const trade: Trade = {
+      orderId: order.id,
+      symbol: order.symbol,
+      side: order.side,
+      shares: order.shares,
+      price: executionPrice,
+      total,
+      timestamp: payload.timestamp,
+      proof,
+    };
+    
+    this.applyTrade(trade);
+    this.notify();
+    
+    return trade;
+  }
+
+  /**
+   * secureExecute wrapper — binds trade to cryptographic proof.
+   * In production, this calls the actual secureExecute from tradepro_v2_verified.html
+   */
+  private async secureExecute(payload: Record<string, unknown>): Promise<BoundProof> {
+    const canonicalPayload = JSON.stringify(payload, Object.keys(payload).sort());
+    const hash = await canonicalHash(payload);
+    
+    // In production: sign with identity private key
+    // For simulation: generate deterministic mock signature
+    const mockSig = await this.mockSign(hash);
+    
+    return {
+      hash,
+      signature: mockSig,
+      publicKey: 'simulated-public-key',
+      timestamp: new Date().toISOString(),
+      canonicalPayload,
+    };
+  }
+
+  private async mockSign(hash: string): Promise<string> {
+    // Deterministic mock signature for reproducible testing
+    const encoder = new TextEncoder();
+    const data = encoder.encode('mock-sign-' + hash);
+    const buf = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(buf))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+  }
+
+  private applyTrade(trade: Trade) {
+    if (trade.side === 'buy') {
+      this.portfolio.cash -= trade.total;
+      
+      const existing = this.portfolio.positions.find(p => p.symbol === trade.symbol);
+      if (existing) {
+        const newTotalShares = existing.shares + trade.shares;
+        const newTotalCost = (existing.avgCost * existing.shares) + trade.total;
+        existing.avgCost = Math.round(newTotalCost / newTotalShares);
+        existing.shares = newTotalShares;
+        existing.currentPrice = trade.price;
+      } else {
+        this.portfolio.positions.push({
+          symbol: trade.symbol,
+          shares: trade.shares,
+          avgCost: trade.price,
+          currentPrice: trade.price,
+        });
+      }
+    } else {
+      // Sell
+      this.portfolio.cash += trade.total;
+      
+      const existing = this.portfolio.positions.find(p => p.symbol === trade.symbol);
+      if (!existing) throw new Error('Position not found for sell');
+      
+      // P&L calculation
+      const costBasis = existing.avgCost * trade.shares;
+      const proceeds = trade.total;
+      const pnl = proceeds - costBasis;
+      this.portfolio.totalPnL += pnl;
+      this.portfolio.dayPnL += pnl;
+      
+      existing.shares -= trade.shares;
+      if (existing.shares === 0) {
+        this.portfolio.positions = this.portfolio.positions.filter(p => p.symbol !== trade.symbol);
+      }
+    }
+    
+    this.portfolio.trades.push(trade);
+    this.recalculateTotals();
+  }
+
+  private recalculateTotals() {
+    const positionValue = this.portfolio.positions.reduce(
+      (sum, p) => sum + (p.shares * p.currentPrice), 0
+    );
+    this.portfolio.totalValue = this.portfolio.cash + positionValue;
+  }
+
+  /**
+   * Update current prices and recalculate P&L
+   */
+  updatePrices(quotes: { symbol: string; price: number }[]) {
+    for (const q of quotes) {
+      const pos = this.portfolio.positions.find(p => p.symbol === q.symbol);
+      if (pos) {
+        pos.currentPrice = q.price;
+      }
+    }
+    this.recalculateTotals();
+    this.notify();
+  }
+
+  /**
+   * Gain/loss for a specific position
+   */
+  getPositionPnL(symbol: string): number {
+    const pos = this.portfolio.positions.find(p => p.symbol === symbol);
+    if (!pos) return 0;
+    return (pos.currentPrice - pos.avgCost) * pos.shares;
+  }
+
+  /**
+   * Total unrealized P&L across all positions
+   */
+  getUnrealizedPnL(): number {
+    return this.portfolio.positions.reduce(
+      (sum, p) => sum + ((p.currentPrice - p.avgCost) * p.shares), 0
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Utility: Format cents to display string
+// ---------------------------------------------------------------------------
+
+export function formatCents(cents: number): string {
+  const abs = Math.abs(cents);
+  const dollars = Math.floor(abs / 100);
+  const fraction = String(abs % 100).padStart(2, '0');
+  const sign = cents < 0 ? '-' : '';
+  return `${sign}$${dollars.toLocaleString()}.${fraction}`;
+}
+
+export function formatChange(cents: number): string {
+  const sign = cents >= 0 ? '+' : '';
+  return `${sign}${formatCents(cents)}`;
+}
+'''
+
+print(f"portfolio.ts: {len(portfolio_ts)} bytes")

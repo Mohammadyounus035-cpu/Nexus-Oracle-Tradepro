@@ -1,0 +1,591 @@
+
+# ============================================================
+# PHASE 1 (continued): Unified Test HTML + Updated Verifier
+# ============================================================
+
+# File 3: unified-test.html — Single authoritative test implementation
+unified_test_html = '''<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deep Human Nature Test — Unified</title>
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --panel: #111111;
+    --border: #333333;
+    --text: #e0e0e0;
+    --muted: #888888;
+    --accent: #ff3333;
+    --accent-glow: rgba(255, 51, 51, 0.3);
+    --green: #00ff88;
+    --green-glow: rgba(0, 255, 136, 0.2);
+    --yellow: #ffaa00;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 20px;
+  }
+  .container { max-width: 720px; width: 100%; }
+  h1 {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--accent);
+    text-align: center;
+    margin-bottom: 8px;
+    text-shadow: 0 0 20px var(--accent-glow);
+  }
+  .subtitle {
+    text-align: center;
+    color: var(--muted);
+    font-size: 14px;
+    margin-bottom: 32px;
+  }
+  .identity-bar {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+  }
+  .identity-bar .fingerprint {
+    font-family: 'SF Mono', monospace;
+    color: var(--accent);
+  }
+  .identity-bar .status {
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+  .identity-bar .status.persistent {
+    background: rgba(0, 255, 136, 0.15);
+    color: var(--green);
+  }
+  .identity-bar .status.new {
+    background: rgba(255, 170, 0, 0.15);
+    color: var(--yellow);
+  }
+  .progress-bar {
+    height: 4px;
+    background: #222;
+    border-radius: 2px;
+    margin-bottom: 32px;
+    overflow: hidden;
+  }
+  .progress-bar .fill {
+    height: 100%;
+    background: var(--accent);
+    box-shadow: 0 0 10px var(--accent-glow);
+    transition: width 0.4s ease;
+  }
+  .question-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px;
+    margin-bottom: 20px;
+    display: none;
+  }
+  .question-card.active { display: block; }
+  .question-card h2 {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 20px;
+    color: var(--text);
+  }
+  .options {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .option {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 18px;
+    color: var(--text);
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: left;
+  }
+  .option:hover {
+    border-color: var(--accent);
+    background: rgba(255, 51, 51, 0.05);
+  }
+  .option.selected {
+    border-color: var(--accent);
+    background: rgba(255, 51, 51, 0.1);
+    box-shadow: 0 0 15px var(--accent-glow);
+  }
+  .nav-buttons {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 24px;
+  }
+  .btn {
+    padding: 10px 24px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: none;
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: #000;
+    box-shadow: 0 0 15px var(--accent-glow);
+  }
+  .btn-primary:hover {
+    background: #ff5555;
+    box-shadow: 0 0 25px var(--accent-glow);
+  }
+  .btn-secondary {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+  }
+  .btn-secondary:hover {
+    border-color: var(--text);
+    color: var(--text);
+  }
+  .result-panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px;
+    display: none;
+  }
+  .result-panel.active { display: block; }
+  .result-panel h2 {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 20px;
+  }
+  .artifact-output {
+    background: #0a0a0a;
+    border: 1px solid #222;
+    border-radius: 8px;
+    padding: 16px;
+    font-family: 'SF Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+    margin-bottom: 16px;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+  .verification-panel {
+    background: #0a0a0a;
+    border: 1px solid #222;
+    border-radius: 8px;
+    padding: 16px;
+    margin-top: 16px;
+  }
+  .verification-panel .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    cursor: pointer;
+  }
+  .verification-panel .header h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .verification-panel .content {
+    display: none;
+  }
+  .verification-panel.expanded .content {
+    display: block;
+  }
+  .verify-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #1a1a1a;
+    font-size: 12px;
+  }
+  .verify-row:last-child { border-bottom: none; }
+  .verify-row .label { color: var(--muted); }
+  .verify-row .value {
+    font-family: 'SF Mono', monospace;
+    color: var(--text);
+  }
+  .verify-row .value.truncate {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .status-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .status-indicator.valid { color: var(--green); }
+  .status-indicator.invalid { color: var(--accent); }
+  .status-indicator .icon {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+  }
+  .status-indicator.valid .icon {
+    background: rgba(0, 255, 136, 0.2);
+  }
+  .status-indicator.invalid .icon {
+    background: rgba(255, 51, 51, 0.2);
+  }
+  .action-buttons {
+    display: flex;
+    gap: 12px;
+    margin-top: 16px;
+  }
+  .btn-copy {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-copy:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .external-verify {
+    margin-top: 24px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+  }
+  .external-verify h3 {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: var(--text);
+  }
+  .paste-area {
+    width: 100%;
+    min-height: 100px;
+    background: #0a0a0a;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    color: var(--text);
+    font-family: 'SF Mono', monospace;
+    font-size: 12px;
+    resize: vertical;
+    margin-bottom: 12px;
+  }
+  .paste-area:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Deep Human Nature Test</h1>
+  <p class="subtitle">Three questions. One signed artifact. Persistent identity.</p>
+  
+  <div class="identity-bar" id="identityBar">
+    <span>Identity: <span class="fingerprint" id="fingerprint">—</span></span>
+    <span class="status new" id="identityStatus">Initializing</span>
+  </div>
+  
+  <div class="progress-bar">
+    <div class="fill" id="progressFill" style="width: 0%"></div>
+  </div>
+  
+  <!-- Question 1 -->
+  <div class="question-card active" data-question="1">
+    <h2>1. When facing a high-stakes decision, what do you trust most?</h2>
+    <div class="options">
+      <button class="option" data-value="instinct">Raw instinct — pattern recognition built over years</button>
+      <button class="option" data-value="data">Hard data — probabilities, expected values, models</button>
+      <button class="option" data-value="consensus">Group consensus — wisdom of trusted peers</button>
+      <button class="option" data-value="principle">First principles — reasoning from invariant truths</button>
+    </div>
+    <div class="nav-buttons">
+      <div></div>
+      <button class="btn btn-primary" id="next1" disabled>Next</button>
+    </div>
+  </div>
+  
+  <!-- Question 2 -->
+  <div class="question-card" data-question="2">
+    <h2>2. What describes your relationship with uncertainty?</h2>
+    <div class="options">
+      <button class="option" data-value="seek">I seek it — edge lives in what others fear</button>
+      <button class="option" data-value="tolerate">I tolerate it — necessary cost of progress</button>
+      <button class="option" data-value="reduce">I reduce it — systems, hedges, contingencies</button>
+      <button class="option" data-value="avoid">I avoid it — clarity before commitment</button>
+    </div>
+    <div class="nav-buttons">
+      <button class="btn btn-secondary" id="prev2">Back</button>
+      <button class="btn btn-primary" id="next2" disabled>Next</button>
+    </div>
+  </div>
+  
+  <!-- Question 3 -->
+  <div class="question-card" data-question="3">
+    <h2>3. How do you know when to change your mind?</h2>
+    <div class="options">
+      <button class="option" data-value="signal">New signal — data that contradicts my model</button>
+      <button class="option" data-value="pain">Pain — failed predictions, real losses</button>
+      <button class="option" data-value="peer">Peer pressure — trusted voices shift</button>
+      <button class="option" data-value="time">Time — old beliefs naturally expire</button>
+    </div>
+    <div class="nav-buttons">
+      <button class="btn btn-secondary" id="prev3">Back</button>
+      <button class="btn btn-primary" id="submit" disabled>Seal Artifact</button>
+    </div>
+  </div>
+  
+  <!-- Result -->
+  <div class="result-panel" id="resultPanel">
+    <h2>Artifact Sealed</h2>
+    <div class="artifact-output" id="artifactOutput"></div>
+    
+    <div class="verification-panel" id="verifyPanel">
+      <div class="header" onclick="toggleVerify()">
+        <h3>🔍 Verification Details</h3>
+        <span id="verifyToggle">▼</span>
+      </div>
+      <div class="content">
+        <div class="verify-row">
+          <span class="label">Canonical Hash</span>
+          <span class="value truncate" id="verifyHash">—</span>
+        </div>
+        <div class="verify-row">
+          <span class="label">Signature (truncated)</span>
+          <span class="value truncate" id="verifySig">—</span>
+        </div>
+        <div class="verify-row">
+          <span class="label">Algorithm</span>
+          <span class="value">Ed25519 + SHA-256</span>
+        </div>
+        <div class="verify-row">
+          <span class="label">Hash Validity</span>
+          <span class="status-indicator valid" id="hashStatus">
+            <span class="icon">✓</span> Valid
+          </span>
+        </div>
+        <div class="verify-row">
+          <span class="label">Signature Validity</span>
+          <span class="status-indicator valid" id="sigStatus">
+            <span class="icon">✓</span> Valid
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    <div class="action-buttons">
+      <button class="btn-copy" onclick="copyArtifact()">📋 Copy Artifact</button>
+      <button class="btn-copy" onclick="downloadArtifact()">⬇️ Download</button>
+    </div>
+    
+    <div class="external-verify">
+      <h3>Verify External Artifact</h3>
+      <textarea class="paste-area" id="pasteArea" placeholder="Paste artifact JSON here..."></textarea>
+      <button class="btn btn-primary" onclick="verifyPasted()">Verify</button>
+      <div id="pasteResult" style="margin-top: 12px; font-size: 13px;"></div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { getOrCreateIdentity } from './identity.js';
+import { canonical, canonicalHash } from './canonical.js';
+
+// State
+let identity = null;
+let answers = {};
+let currentQuestion = 1;
+let artifact = null;
+
+// Initialize
+async function init() {
+  identity = await getOrCreateIdentity();
+  document.getElementById('fingerprint').textContent = identity.fingerprint;
+  const statusEl = document.getElementById('identityStatus');
+  statusEl.textContent = identity.isNew ? 'New Identity' : 'Persistent';
+  statusEl.className = 'status ' + (identity.isNew ? 'new' : 'persistent');
+}
+
+// Navigation
+function showQuestion(n) {
+  document.querySelectorAll('.question-card').forEach(c => c.classList.remove('active'));
+  document.querySelector(`.question-card[data-question="${n}"]`).classList.add('active');
+  currentQuestion = n;
+  updateProgress();
+}
+
+function updateProgress() {
+  const pct = ((currentQuestion - 1) / 3) * 100;
+  document.getElementById('progressFill').style.width = pct + '%';
+}
+
+// Option selection
+document.querySelectorAll('.option').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const card = btn.closest('.question-card');
+    const qNum = card.dataset.question;
+    card.querySelectorAll('.option').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    answers[qNum] = btn.dataset.value;
+    
+    // Enable next button
+    const nextBtn = card.querySelector('.btn-primary');
+    nextBtn.disabled = false;
+  });
+});
+
+// Button handlers
+document.getElementById('next1').addEventListener('click', () => showQuestion(2));
+document.getElementById('prev2').addEventListener('click', () => showQuestion(1));
+document.getElementById('next2').addEventListener('click', () => showQuestion(3));
+document.getElementById('prev3').addEventListener('click', () => showQuestion(2));
+
+document.getElementById('submit').addEventListener('click', async () => {
+  await sealArtifact();
+});
+
+// Seal artifact
+async function sealArtifact() {
+  const payload = {
+    version: '2.0',
+    timestamp: new Date().toISOString(),
+    identity: identity.fingerprint,
+    answers: {
+      decision: answers[1],
+      uncertainty: answers[2],
+      change: answers[3],
+    },
+  };
+  
+  const hash = await canonicalHash(payload);
+  
+  // Sign with identity
+  const sig = await signPayload(payload, identity.privateKey);
+  
+  artifact = {
+    ...payload,
+    hash,
+    signature: sig,
+    algorithm: 'Ed25519-SHA256',
+  };
+  
+  // Display
+  document.getElementById('artifactOutput').textContent = canonical(artifact);
+  document.getElementById('verifyHash').textContent = hash;
+  document.getElementById('verifySig').textContent = sig.slice(0, 32) + '...';
+  
+  document.querySelectorAll('.question-card').forEach(c => c.classList.remove('active'));
+  document.getElementById('resultPanel').classList.add('active');
+  document.getElementById('progressFill').style.width = '100%';
+}
+
+async function signPayload(payload, privateKey) {
+  // Use Web Crypto or tweetnacl fallback
+  const bytes = new TextEncoder().encode(canonical(payload));
+  try {
+    const key = await crypto.subtle.importKey(
+      'raw', privateKey, { name: 'Ed25519' }, false, ['sign']
+    );
+    const sig = await crypto.subtle.sign('Ed25519', key, bytes);
+    return Array.from(new Uint8Array(sig))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+  } catch (e) {
+    // Fallback to tweetnacl
+    const nacl = window.nacl || await import('https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js');
+    const sig = nacl.sign.detached(bytes, privateKey);
+    return Array.from(sig).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+}
+
+// UI helpers
+window.toggleVerify = function() {
+  document.getElementById('verifyPanel').classList.toggle('expanded');
+};
+
+window.copyArtifact = function() {
+  navigator.clipboard.writeText(canonical(artifact));
+  const btn = event.target;
+  btn.textContent = '✓ Copied';
+  setTimeout(() => btn.textContent = '📋 Copy Artifact', 2000);
+};
+
+window.downloadArtifact = function() {
+  const blob = new Blob([canonical(artifact)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `dhn-artifact-${artifact.identity}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+window.verifyPasted = async function() {
+  const input = document.getElementById('pasteArea').value.trim();
+  const resultEl = document.getElementById('pasteResult');
+  
+  try {
+    const parsed = JSON.parse(input);
+    const recomputed = await canonicalHash({
+      version: parsed.version,
+      timestamp: parsed.timestamp,
+      identity: parsed.identity,
+      answers: parsed.answers,
+    });
+    
+    const hashValid = recomputed === parsed.hash;
+    resultEl.innerHTML = `
+      <div class="status-indicator ${hashValid ? 'valid' : 'invalid'}">
+        <span class="icon">${hashValid ? '✓' : '✗'}</span>
+        Hash ${hashValid ? 'Valid' : 'INVALID'}
+      </div>
+      <div style="margin-top:8px;color:#888;font-size:12px;">
+        Recomputed: ${recomputed}<br>
+        Stored: ${parsed.hash}
+      </div>
+    `;
+  } catch (e) {
+    resultEl.innerHTML = `<span style="color:var(--accent)">Invalid artifact format</span>`;
+  }
+};
+
+init();
+</script>
+</body>
+</html>'''
+
+print(f"unified-test.html: {len(unified_test_html)} bytes")
