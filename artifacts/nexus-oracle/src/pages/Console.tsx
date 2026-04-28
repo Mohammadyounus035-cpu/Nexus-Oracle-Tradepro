@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Eye, Activity, Database, Crosshair, Shield, Zap } from "lucide-react";
+import { Eye, Activity } from "lucide-react";
 import GlassCard from "../components/GlassCard";
 import MiniLattice from "../components/MiniLattice";
 
