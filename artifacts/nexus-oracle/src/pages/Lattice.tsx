@@ -4,6 +4,7 @@ import { OrbitControls, Line } from "@react-three/drei";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import * as THREE from "three";
 import GlassCard from "../components/GlassCard";
+import WebGLGuard from "../components/WebGLGuard";
 import { Shield, Zap, Diamond, Crosshair, Lock } from "lucide-react";
 
 interface ShellConfig {
@@ -106,8 +107,9 @@ function CentralIH() {
 
 export default function LatticePage() {
   return (
-    <div className="relative w-full h-[calc(100vh-6rem)] bg-background overflow-hidden">
-      <Canvas camera={{ position: [0, 0, 30], fov: 50 }}>
+    <div className="relative w-full h-[calc(100vh-6rem)] bg-background overflow-hidden" data-testid="page-lattice">
+      <WebGLGuard>
+      <Canvas camera={{ position: [0, 0, 30], fov: 50 }} gl={{ failIfMajorPerformanceCaveat: false, antialias: true }}>
         <ambientLight intensity={0.3} />
         <pointLight position={[10, 10, 10]} intensity={1} />
         
@@ -122,6 +124,7 @@ export default function LatticePage() {
           <Bloom luminanceThreshold={0.1} mipmapBlur intensity={1.5} />
         </EffectComposer>
       </Canvas>
+      </WebGLGuard>
 
       {/* Overlays */}
       <GlassCard className="absolute top-6 left-6 p-4 w-72 bg-black/60">

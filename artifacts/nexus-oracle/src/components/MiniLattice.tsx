@@ -2,6 +2,7 @@ import { useRef, useMemo } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import * as THREE from "three";
+import WebGLGuard from "./WebGLGuard";
 
 function NodeShell({ radius, count, color, speed }: { radius: number, count: number, color: string, speed: number }) {
   const groupRef = useRef<THREE.Group>(null);
@@ -60,8 +61,9 @@ function CoreNode() {
 
 export default function MiniLattice() {
   return (
-    <div className="w-full h-full min-h-[200px] bg-black/40 rounded-lg overflow-hidden border border-primary/20 relative flex items-center justify-center">
-      <Canvas camera={{ position: [0, 0, 5], fov: 45 }}>
+    <div className="w-full h-full min-h-[200px] bg-black/40 rounded-lg overflow-hidden border border-primary/20 relative flex items-center justify-center" data-testid="mini-lattice">
+      <WebGLGuard>
+      <Canvas camera={{ position: [0, 0, 5], fov: 45 }} gl={{ failIfMajorPerformanceCaveat: false, antialias: true }}>
         <ambientLight intensity={0.2} />
         <CoreNode />
         <NodeShell radius={1.5} count={12} color="#00e5c9" speed={0.4} />
@@ -71,6 +73,7 @@ export default function MiniLattice() {
           <Bloom luminanceThreshold={0.2} mipmapBlur intensity={1.5} />
         </EffectComposer>
       </Canvas>
+      </WebGLGuard>
       <div className="absolute bottom-2 left-2 text-[10px] font-mono text-primary/70">
         MFCS_LATTICE_PREVIEW
       </div>
