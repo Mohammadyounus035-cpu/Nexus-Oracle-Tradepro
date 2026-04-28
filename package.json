@@ -19,8 +19,7 @@
     "apps/*",
     "packages/*",
     "nexus-core",
-    "allocator-service",
-    "mfcs-omega/codex/vscode-extension"
+    "allocator-service"
   ],
   "devDependencies": {
     "databento": "^0.32.3",
