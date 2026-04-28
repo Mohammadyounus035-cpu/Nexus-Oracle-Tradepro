@@ -4,29 +4,30 @@
   "description": "Monorepo for Omega Lattice and Nexus Core projects.",
   "private": true,
   "scripts": {
-    "install:all": "pnpm install",
-    "build:all": "pnpm -r build",
-    "test:all": "pnpm -r test",
-    "dev:web": "pnpm --filter web dev",
-    "dev:server": "pnpm --filter server dev",
-    "ingest": "ts-node ingest.ts",
-    "ingest:watch": "ts-node-dev --respawn ingest.ts"
+    "dev": "vite --host 0.0.0.0 --port 5000",
+    "build": "vite build",
+    "preview": "vite preview"
   },
   "keywords": [],
   "author": "Manus AI",
   "license": "MIT",
-  "workspaces": [
-    "apps/*",
-    "packages/*",
-    "nexus-core",
-    "allocator-service"
-  ],
+  "dependencies": {
+    "lucide-react": "^0.468.0",
+    "motion": "^12.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.1.1"
+  },
   "devDependencies": {
-    "databento": "^0.32.3",
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "@vitejs/plugin-react": "^4.3.4",
     "dotenv": "^16.4.5",
     "fs-extra": "^11.2.0",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
-    "typescript": "^5.4.2"
+    "typescript": "^5.4.2",
+    "vite": "^6.0.5"
   }
 }
