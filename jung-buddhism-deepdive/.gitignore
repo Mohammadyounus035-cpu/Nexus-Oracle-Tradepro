@@ -1,0 +1,10 @@
+# .gitignore
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+
+# Ignore generated outputs if you prefer users to generate them locally
+# output/*.png
+# output/*.md
