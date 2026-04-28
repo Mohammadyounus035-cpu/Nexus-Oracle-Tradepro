@@ -143,6 +143,8 @@ describe("metrics hook", () => {
       }),
     ).toThrow("High-risk auto-approved");
     expect(called).toBe(true);
+  });
+
   it("generates all valid vectors and filters invalid combinations", () => {
     const vectors = generateAllVectors();
 

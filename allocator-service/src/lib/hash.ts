@@ -75,25 +75,3 @@ export function stableStringify(value: unknown): string {
 export function sha256(value: string): string {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
-
-  const objectValue = value as Record<string, unknown>;
-  const keys = Object.keys(objectValue)
-    .filter((key) => objectValue[key] !== undefined)
-    .sort();
-
-  const entries = keys.map((key) => `${JSON.stringify(key)}:${stableStringify(objectValue[key])}`);
-  return `{${entries.join(",")}}`;
-  const keys = Object.keys(objectValue).sort();
-  return `{${keys
-    .map((key) => `${JSON.stringify(key)}:${stableStringify(objectValue[key])}`)
-    .join(",")}}`;
-}
-
-export function sha256Json(value: unknown): string {
-  return sha256(stableStringify(value));
-}
-
-export function sha256JsonStable(value: unknown): string {
-export function sha256StableJson(value: unknown): string {
-  return crypto.createHash("sha256").update(stableStringify(value)).digest("hex");
-}

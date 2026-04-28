@@ -2,9 +2,6 @@ import { AUTHS, DECISIONS, ENVS, MODES, RISKS, type Vector } from "./testMatrix"
 import { isValidVector } from "./constraints";
 
 export function generateAllVectors(): Vector[] {
-  const out: Vector[] = [];
-
-export function generateAllVectors(): Vector[] {
   const vectors: Vector[] = [];
 
   for (const env of ENVS) {

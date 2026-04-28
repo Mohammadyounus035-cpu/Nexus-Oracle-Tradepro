@@ -21,7 +21,7 @@ describe("determinism", () => {
       ],
       nodes: [
         { id: "n1", capacity: 1, used: 0 },
-        { id: "n2", capacity: 1, used: 0, tags: ["b", "a"] },
+        { id: "n2", capacity: 1, used: 0, tags: ["b", "a"] }
       ],
     });
 
