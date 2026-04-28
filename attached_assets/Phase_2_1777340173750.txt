@@ -1,0 +1,1105 @@
+
+# ============================================================
+# PHASE 2: WEB-BASED STOCK TRADING SIMULATOR
+# ============================================================
+
+# File 1: marketData.ts — Data Adapter Layer
+marketData_ts = '''/**
+ * marketData.ts — Data Adapter Layer
+ * 
+ * Provides unified market data combining analyst ratings (CSV)
+ * with synthetic price generation for simulation.
+ */
+
+export interface Stock {
+  symbol: string;
+  name: string;
+  sector: string;
+}
+
+export interface Quote {
+  symbol: string;
+  price: number;        // Current price in cents (integer)
+  bid: number;
+  ask: number;
+  volume: number;
+  timestamp: string;
+  changePercent: number;
+}
+
+export interface AnalystRating {
+  symbol: string;
+  firm: string;
+  rating: 'buy' | 'hold' | 'sell';
+  targetPrice: number;  // In cents
+  date: string;
+}
+
+export interface MarketDataProvider {
+  getQuote(symbol: string): Promise<Quote>;
+  getRatings(symbol: string): Promise<AnalystRating[]>;
+  getAvailableSymbols(): string[];
+}
+
+// ---------------------------------------------------------------------------
+// CSV Market Data Provider — parses aapl_analyst_ratings.csv
+// ---------------------------------------------------------------------------
+
+export class CSVMarketDataProvider implements MarketDataProvider {
+  private ratings: Map<string, AnalystRating[]> = new Map();
+  private symbols: string[] = [];
+
+  constructor(csvText: string) {
+    this.parseCSV(csvText);
+  }
+
+  private parseCSV(text: string) {
+    const lines = text.trim().split('\\n');
+    if (lines.length < 2) return;
+    
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+    const symIdx = headers.indexOf('symbol');
+    const firmIdx = headers.indexOf('firm');
+    const ratingIdx = headers.indexOf('rating');
+    const targetIdx = headers.indexOf('target_price');
+    const dateIdx = headers.indexOf('date');
+
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i].split(',').map(c => c.trim());
+      if (cols.length < Math.max(symIdx, firmIdx, ratingIdx, targetIdx, dateIdx) + 1) continue;
+
+      const symbol = cols[symIdx];
+      const rating: AnalystRating = {
+        symbol,
+        firm: cols[firmIdx] || 'Unknown',
+        rating: this.normalizeRating(cols[ratingIdx]),
+        targetPrice: Math.round(parseFloat(cols[targetIdx]) * 100), // Convert to cents
+        date: cols[dateIdx] || new Date().toISOString().split('T')[0],
+      };
+
+      if (!this.ratings.has(symbol)) {
+        this.ratings.set(symbol, []);
+        this.symbols.push(symbol);
+      }
+      this.ratings.get(symbol)!.push(rating);
+    }
+  }
+
+  private normalizeRating(r: string): 'buy' | 'hold' | 'sell' {
+    const normalized = r.toLowerCase().trim();
+    if (normalized.includes('buy') || normalized.includes('overweight') || normalized.includes('outperform')) return 'buy';
+    if (normalized.includes('sell') || normalized.includes('underweight') || normalized.includes('underperform')) return 'sell';
+    return 'hold';
+  }
+
+  async getQuote(symbol: string): Promise<Quote> {
+    // Quotes come from the mock price generator in practice
+    throw new Error('CSVMarketDataProvider does not provide live quotes');
+  }
+
+  async getRatings(symbol: string): Promise<AnalystRating[]> {
+    return this.ratings.get(symbol) || [];
+  }
+
+  getAvailableSymbols(): string[] {
+    return [...this.symbols];
+  }
+
+  getConsensus(symbol: string): { averageTarget: number; rating: 'buy' | 'hold' | 'sell' } {
+    const ratings = this.ratings.get(symbol) || [];
+    if (ratings.length === 0) return { averageTarget: 0, rating: 'hold' };
+
+    const avgTarget = ratings.reduce((sum, r) => sum + r.targetPrice, 0) / ratings.length;
+    const buyCount = ratings.filter(r => r.rating === 'buy').length;
+    const sellCount = ratings.filter(r => r.rating === 'sell').length;
+    
+    let rating: 'buy' | 'hold' | 'sell' = 'hold';
+    if (buyCount > sellCount && buyCount > ratings.length / 3) rating = 'buy';
+    else if (sellCount > buyCount && sellCount > ratings.length / 3) rating = 'sell';
+
+    return { averageTarget: Math.round(avgTarget), rating };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Mock Price Generator — realistic synthetic price movements
+// ---------------------------------------------------------------------------
+
+export class MockPriceGenerator implements MarketDataProvider {
+  private basePrices: Map<string, number> = new Map();
+  private volatility: Map<string, number> = new Map();
+  private lastUpdate: Map<string, number> = new Map();
+  private ratingsProvider: CSVMarketDataProvider | null = null;
+
+  constructor(ratingsProvider?: CSVMarketDataProvider) {
+    this.ratingsProvider = ratingsProvider || null;
+    this.initializePrices();
+  }
+
+  private initializePrices() {
+    // Seed with realistic base prices (in cents)
+    const seeds: [string, number, number][] = [
+      ['AAPL', 18500, 0.015],   // $185.00, 1.5% daily vol
+      ['GOOGL', 14200, 0.018],
+      ['MSFT', 37800, 0.012],
+      ['AMZN', 17800, 0.020],
+      ['TSLA', 24800, 0.035],
+      ['META', 50500, 0.022],
+      ['NVDA', 87500, 0.028],
+      ['NFLX', 62800, 0.025],
+    ];
+    
+    for (const [sym, price, vol] of seeds) {
+      this.basePrices.set(sym, price);
+      this.volatility.set(sym, vol);
+      this.lastUpdate.set(sym, Date.now());
+    }
+  }
+
+  async getQuote(symbol: string): Promise<Quote> {
+    const basePrice = this.basePrices.get(symbol);
+    if (!basePrice) throw new Error(`Unknown symbol: ${symbol}`);
+
+    const vol = this.volatility.get(symbol) || 0.02;
+    const now = Date.now();
+    const elapsed = (now - (this.lastUpdate.get(symbol) || now)) / 1000; // seconds
+    
+    // Geometric Brownian Motion approximation
+    const drift = 0.0001 * elapsed; // Slight upward drift
+    const shock = (Math.random() - 0.5) * vol * Math.sqrt(elapsed / 86400);
+    const change = drift + shock;
+    
+    const currentPrice = Math.max(1, Math.round(basePrice * (1 + change)));
+    const spread = Math.max(1, Math.round(currentPrice * 0.0005)); // 0.05% spread
+    
+    // Update base price for next iteration (random walk)
+    this.basePrices.set(symbol, currentPrice);
+    this.lastUpdate.set(symbol, now);
+
+    return {
+      symbol,
+      price: currentPrice,
+      bid: currentPrice - spread,
+      ask: currentPrice + spread,
+      volume: Math.floor(Math.random() * 10000000),
+      timestamp: new Date().toISOString(),
+      changePercent: change * 100,
+    };
+  }
+
+  async getRatings(symbol: string): Promise<AnalystRating[]> {
+    if (this.ratingsProvider) {
+      return this.ratingsProvider.getRatings(symbol);
+    }
+    return [];
+  }
+
+  getAvailableSymbols(): string[] {
+    const symbols = Array.from(this.basePrices.keys());
+    if (this.ratingsProvider) {
+      const ratedSymbols = this.ratingsProvider.getAvailableSymbols();
+      return [...new Set([...symbols, ...ratedSymbols])];
+    }
+    return symbols;
+  }
+
+  getConsensus(symbol: string) {
+    if (this.ratingsProvider) {
+      return this.ratingsProvider.getConsensus(symbol);
+    }
+    return { averageTarget: 0, rating: 'hold' as const };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Unified Market Data Interface
+// ---------------------------------------------------------------------------
+
+export interface UnifiedMarketData {
+  quote: Quote;
+  ratings: AnalystRating[];
+  consensus: { averageTarget: number; rating: 'buy' | 'hold' | 'sell' };
+}
+
+export async function getMarketData(
+  symbol: string,
+  priceGen: MockPriceGenerator,
+  ratingsProvider?: CSVMarketDataProvider
+): Promise<UnifiedMarketData> {
+  const [quote, ratings] = await Promise.all([
+    priceGen.getQuote(symbol),
+    ratingsProvider ? ratingsProvider.getRatings(symbol) : Promise.resolve([]),
+  ]);
+
+  const consensus = ratingsProvider 
+    ? ratingsProvider.getConsensus(symbol)
+    : { averageTarget: 0, rating: 'hold' as const };
+
+  return { quote, ratings, consensus };
+}
+'''
+
+print(f"marketData.ts: {len(marketData_ts)} bytes")
+
+# ============================================================
+# PHASE 2 (continued): Portfolio State Management
+# ============================================================
+
+# File 2: portfolio.ts — Portfolio State Management with cents-based arithmetic
+portfolio_ts = '''/**
+ * portfolio.ts — Portfolio State Management
+ * 
+ * Cents-based arithmetic with invariant enforcement.
+ * All monetary values stored as integers (cents) to avoid float errors.
+ * 
+ * Integrates with secureExecute() for trade verification.
+ */
+
+import { canonical, canonicalHash } from '../deep-human-nature-test/canonical.js';
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export type OrderSide = 'buy' | 'sell';
+export type OrderType = 'market' | 'limit';
+export type OrderStatus = 'pending' | 'filled' | 'rejected' | 'cancelled';
+
+export interface Order {
+  id: string;
+  symbol: string;
+  side: OrderSide;
+  quantity: number;      // Whole shares only
+  price: number;         // In cents (limit price or filled price)
+  type: OrderType;
+  status: OrderStatus;
+  timestamp: string;
+}
+
+export interface Position {
+  symbol: string;
+  quantity: number;
+  averageCost: number;   // In cents
+  currentPrice: number;  // In cents
+}
+
+export interface Trade {
+  id: string;
+  orderId: string;
+  symbol: string;
+  side: OrderSide;
+  quantity: number;
+  price: number;         // In cents
+  timestamp: string;
+  proof?: BoundProof;
+}
+
+export interface BoundProof {
+  hash: string;
+  signature: string;
+  canonicalPayload: string;
+  algorithm: string;
+  timestamp: string;
+}
+
+export interface Portfolio {
+  cash: number;          // In cents
+  positions: Position[];
+  orders: Order[];
+  trades: Trade[];
+  totalValue: number;    // In cents
+  dayPnl: number;        // In cents
+  totalPnl: number;      // In cents
+}
+
+// ---------------------------------------------------------------------------
+// Invariant: Money type — prevents accidental float operations
+// ---------------------------------------------------------------------------
+
+export class Money {
+  readonly cents: number;
+
+  constructor(cents: number) {
+    if (!Number.isInteger(cents)) {
+      throw new Error(`Money invariant violated: ${cents} is not an integer`);
+    }
+    this.cents = cents;
+  }
+
+  static fromDollars(dollars: number): Money {
+    return new Money(Math.round(dollars * 100));
+  }
+
+  toDollars(): number {
+    return this.cents / 100;
+  }
+
+  add(other: Money): Money {
+    return new Money(this.cents + other.cents);
+  }
+
+  subtract(other: Money): Money {
+    return new Money(this.cents - other.cents);
+  }
+
+  multiply(factor: number): Money {
+    return new Money(Math.round(this.cents * factor));
+  }
+
+  divide(divisor: number): Money {
+    if (divisor === 0) throw new Error('Division by zero');
+    return new Money(Math.round(this.cents / divisor));
+  }
+
+  format(): string {
+    return `$${(this.cents / 100).toFixed(2)}`;
+  }
+
+  toString(): string {
+    return this.format();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Portfolio Manager
+// ---------------------------------------------------------------------------
+
+export class PortfolioManager {
+  private portfolio: Portfolio;
+  private onUpdate?: (portfolio: Portfolio) => void;
+
+  constructor(initialCash: number = 10000000, onUpdate?: (portfolio: Portfolio) => void) {
+    // $100,000.00 default
+    this.portfolio = {
+      cash: initialCash,
+      positions: [],
+      orders: [],
+      trades: [],
+      totalValue: initialCash,
+      dayPnl: 0,
+      totalPnl: 0,
+    };
+    this.onUpdate = onUpdate;
+  }
+
+  getPortfolio(): Portfolio {
+    return { ...this.portfolio };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Order Execution
+  // ---------------------------------------------------------------------------
+
+  async executeOrder(orderInput: {
+    symbol: string;
+    side: OrderSide;
+    quantity: number;
+    price: number;     // In cents
+    type: OrderType;
+  }): Promise<{ order: Order; trade?: Trade; error?: string }> {
+    try {
+      // Validate
+      if (orderInput.quantity <= 0) {
+        return { error: 'Quantity must be positive', order: null as any };
+      }
+      if (orderInput.price <= 0) {
+        return { error: 'Price must be positive', order: null as any };
+      }
+
+      const totalCost = orderInput.price * orderInput.quantity;
+
+      if (orderInput.side === 'buy' && totalCost > this.portfolio.cash) {
+        return { error: 'Insufficient funds', order: null as any };
+      }
+
+      const existingPosition = this.portfolio.positions.find(p => p.symbol === orderInput.symbol);
+      if (orderInput.side === 'sell') {
+        if (!existingPosition || existingPosition.quantity < orderInput.quantity) {
+          return { error: 'Insufficient shares', order: null as any };
+        }
+      }
+
+      // Create order
+      const order: Order = {
+        id: this.generateId(),
+        symbol: orderInput.symbol,
+        side: orderInput.side,
+        quantity: orderInput.quantity,
+        price: orderInput.price,
+        type: orderInput.type,
+        status: 'filled',
+        timestamp: new Date().toISOString(),
+      };
+
+      // Build canonical payload for secureExecute
+      const payload = {
+        orderId: order.id,
+        symbol: order.symbol,
+        side: order.side,
+        quantity: order.quantity,
+        price: order.price,
+        timestamp: order.timestamp,
+        portfolioCashBefore: this.portfolio.cash,
+      };
+
+      // Call secureExecute wrapper (integration point)
+      const proof = await this.secureExecute(payload);
+
+      // Execute trade
+      const trade: Trade = {
+        id: this.generateId(),
+        orderId: order.id,
+        symbol: order.symbol,
+        side: order.side,
+        quantity: order.quantity,
+        price: order.price,
+        timestamp: order.timestamp,
+        proof,
+      };
+
+      // Update portfolio state (cents arithmetic)
+      if (order.side === 'buy') {
+        this.portfolio.cash -= totalCost;
+        
+        if (existingPosition) {
+          const totalShares = existingPosition.quantity + order.quantity;
+          const totalCostBasis = (existingPosition.quantity * existingPosition.averageCost) + totalCost;
+          existingPosition.quantity = totalShares;
+          existingPosition.averageCost = Math.round(totalCostBasis / totalShares);
+          existingPosition.currentPrice = order.price;
+        } else {
+          this.portfolio.positions.push({
+            symbol: order.symbol,
+            quantity: order.quantity,
+            averageCost: order.price,
+            currentPrice: order.price,
+          });
+        }
+      } else {
+        // Sell
+        this.portfolio.cash += totalCost;
+        
+        if (existingPosition) {
+          existingPosition.quantity -= order.quantity;
+          if (existingPosition.quantity === 0) {
+            this.portfolio.positions = this.portfolio.positions.filter(p => p.symbol !== order.symbol);
+          }
+        }
+      }
+
+      this.portfolio.orders.push(order);
+      this.portfolio.trades.push(trade);
+      this.recalculatePortfolio();
+
+      this.onUpdate?.(this.getPortfolio());
+
+      return { order, trade };
+
+    } catch (e) {
+      return { error: String(e), order: null as any };
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // secureExecute Integration
+  // ---------------------------------------------------------------------------
+
+  private async secureExecute(payload: Record<string, any>): Promise<BoundProof> {
+    // This integrates with the existing secureExecute() from tradepro_v2_verified.html
+    // In production, this would call the actual verification wrapper
+    
+    const canonicalPayload = canonical(payload);
+    const hash = await canonicalHash(payload);
+    
+    // Simulate signature (in production, use actual Ed25519 signing)
+    const signature = await this.simulateSignature(canonicalPayload);
+
+    return {
+      hash,
+      signature,
+      canonicalPayload,
+      algorithm: 'Ed25519-SHA256',
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  private async simulateSignature(payload: string): Promise<string> {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(payload);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(hashBuffer))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Portfolio Calculations
+  // ---------------------------------------------------------------------------
+
+  updatePrices(prices: Map<string, number>) {
+    for (const position of this.portfolio.positions) {
+      const newPrice = prices.get(position.symbol);
+      if (newPrice) {
+        position.currentPrice = newPrice;
+      }
+    }
+    this.recalculatePortfolio();
+    this.onUpdate?.(this.getPortfolio());
+  }
+
+  private recalculatePortfolio() {
+    const positionsValue = this.portfolio.positions.reduce(
+      (sum, p) => sum + (p.quantity * p.currentPrice),
+      0
+    );
+    
+    this.portfolio.totalValue = this.portfolio.cash + positionsValue;
+    
+    // Calculate total P&L
+    const costBasis = this.portfolio.positions.reduce(
+      (sum, p) => sum + (p.quantity * p.averageCost),
+      0
+    );
+    const currentValue = this.portfolio.positions.reduce(
+      (sum, p) => sum + (p.quantity * p.currentPrice),
+      0
+    );
+    this.portfolio.totalPnl = currentValue - costBasis;
+  }
+
+  getPosition(symbol: string): Position | undefined {
+    return this.portfolio.positions.find(p => p.symbol === symbol);
+  }
+
+  getTradeHistory(): Trade[] {
+    return [...this.portfolio.trades];
+  }
+
+  // ---------------------------------------------------------------------------
+  // Export
+  // ---------------------------------------------------------------------------
+
+  exportProofs(): BoundProof[] {
+    return this.portfolio.trades
+      .filter(t => t.proof)
+      .map(t => t.proof!);
+  }
+
+  private generateId(): string {
+    return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Utility: Format cents to dollar string
+// ---------------------------------------------------------------------------
+
+export function formatCents(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+export function centsToDollars(cents: number): number {
+  return cents / 100;
+}
+
+export function dollarsToCents(dollars: number): number {
+  return Math.round(dollars * 100);
+}
+'''
+
+print(f"portfolio.ts: {len(portfolio_ts)} bytes")
+
+# ============================================================
+# PHASE 2 (continued): React Components
+# ============================================================
+
+# File 3: PortfolioPanel.tsx
+portfolioPanel_tsx = '''/**
+ * PortfolioPanel.tsx — Displays holdings, values, and P&L
+ */
+
+import React from 'react';
+import { Portfolio, Position, formatCents } from '../../lib/portfolio';
+
+interface PortfolioPanelProps {
+  portfolio: Portfolio;
+}
+
+export const PortfolioPanel: React.FC<PortfolioPanelProps> = ({ portfolio }) => {
+  const totalPnlPercent = portfolio.totalValue > 0 
+    ? (portfolio.totalPnl / (portfolio.totalValue - portfolio.totalPnl)) * 100 
+    : 0;
+
+  return (
+    <div className="portfolio-panel">
+      <h2>Portfolio</h2>
+      
+      <div className="summary-cards">
+        <div className="summary-card">
+          <div className="label">Total Value</div>
+          <div className="value">{formatCents(portfolio.totalValue)}</div>
+        </div>
+        <div className="summary-card">
+          <div className="label">Cash</div>
+          <div className="value">{formatCents(portfolio.cash)}</div>
+        </div>
+        <div className="summary-card">
+          <div className="label">P&L</div>
+          <div className={`value ${portfolio.totalPnl >= 0 ? 'positive' : 'negative'}`}>
+            {portfolio.totalPnl >= 0 ? '+' : ''}{formatCents(portfolio.totalPnl)}
+            <span className="percent"> ({totalPnlPercent >= 0 ? '+' : ''}{totalPnlPercent.toFixed(2)}%)</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="positions-section">
+        <h3>Positions</h3>
+        {portfolio.positions.length === 0 ? (
+          <div className="empty-state">No positions</div>
+        ) : (
+          <table className="positions-table">
+            <thead>
+              <tr>
+                <th>Symbol</th>
+                <th>Quantity</th>
+                <th>Avg Cost</th>
+                <th>Current</th>
+                <th>P&L</th>
+              </tr>
+            </thead>
+            <tbody>
+              {portfolio.positions.map(pos => (
+                <PositionRow key={pos.symbol} position={pos} />
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const PositionRow: React.FC<{ position: Position }> = ({ position }) => {
+  const pnl = (position.currentPrice - position.averageCost) * position.quantity;
+  const pnlPercent = position.averageCost > 0 
+    ? ((position.currentPrice - position.averageCost) / position.averageCost) * 100 
+    : 0;
+
+  return (
+    <tr>
+      <td className="symbol">{position.symbol}</td>
+      <td>{position.quantity}</td>
+      <td>{formatCents(position.averageCost)}</td>
+      <td>{formatCents(position.currentPrice)}</td>
+      <td className={pnl >= 0 ? 'positive' : 'negative'}>
+        {pnl >= 0 ? '+' : ''}{formatCents(pnl)}
+        <span className="percent"> ({pnlPercent >= 0 ? '+' : ''}{pnlPercent.toFixed(2)}%)</span>
+      </td>
+    </tr>
+  );
+};
+'''
+
+# File 4: OrderForm.tsx
+orderForm_tsx = '''/**
+ * OrderForm.tsx — Buy/sell order entry with validation
+ */
+
+import React, { useState } from 'react';
+import { OrderSide, OrderType, dollarsToCents, formatCents } from '../../lib/portfolio';
+import { Quote } from '../../lib/marketData';
+
+interface OrderFormProps {
+  symbol: string;
+  quote: Quote | null;
+  availableCash: number;
+  positionQuantity: number;
+  onSubmit: (order: {
+    symbol: string;
+    side: OrderSide;
+    quantity: number;
+    price: number;
+    type: OrderType;
+  }) => void;
+}
+
+export const OrderForm: React.FC<OrderFormProps> = ({
+  symbol,
+  quote,
+  availableCash,
+  positionQuantity,
+  onSubmit,
+}) => {
+  const [side, setSide] = useState<OrderSide>('buy');
+  const [quantity, setQuantity] = useState<string>('');
+  const [orderType, setOrderType] = useState<OrderType>('market');
+  const [limitPrice, setLimitPrice] = useState<string>('');
+  const [error, setError] = useState<string>('');
+
+  const currentPrice = quote?.price || 0;
+  const estimatedTotal = currentPrice * (parseInt(quantity) || 0);
+
+  const validate = (): boolean => {
+    setError('');
+    const qty = parseInt(quantity);
+    
+    if (!qty || qty <= 0) {
+      setError('Quantity must be a positive integer');
+      return false;
+    }
+    
+    if (side === 'buy' && estimatedTotal > availableCash) {
+      setError(`Insufficient funds. Need ${formatCents(estimatedTotal)}, have ${formatCents(availableCash)}`);
+      return false;
+    }
+    
+    if (side === 'sell' && qty > positionQuantity) {
+      setError(`Insufficient shares. Have ${positionQuantity}, trying to sell ${qty}`);
+      return false;
+    }
+    
+    if (orderType === 'limit') {
+      const lPrice = parseFloat(limitPrice);
+      if (!lPrice || lPrice <= 0) {
+        setError('Limit price must be positive');
+        return false;
+      }
+    }
+    
+    return true;
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validate()) return;
+    
+    onSubmit({
+      symbol,
+      side,
+      quantity: parseInt(quantity),
+      price: orderType === 'market' ? currentPrice : dollarsToCents(parseFloat(limitPrice)),
+      type: orderType,
+    });
+    
+    setQuantity('');
+    setLimitPrice('');
+  };
+
+  return (
+    <div className="order-form">
+      <h2>Trade {symbol}</h2>
+      
+      {quote && (
+        <div className="quote-display">
+          <span className="price">{formatCents(quote.price)}</span>
+          <span className={`change ${quote.changePercent >= 0 ? 'positive' : 'negative'}`}>
+            {quote.changePercent >= 0 ? '+' : ''}{quote.changePercent.toFixed(2)}%
+          </span>
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit}>
+        <div className="side-toggle">
+          <button
+            type="button"
+            className={side === 'buy' ? 'active buy' : ''}
+            onClick={() => setSide('buy')}
+          >
+            Buy
+          </button>
+          <button
+            type="button"
+            className={side === 'sell' ? 'active sell' : ''}
+            onClick={() => setSide('sell')}
+          >
+            Sell
+          </button>
+        </div>
+
+        <div className="form-row">
+          <label>Quantity</label>
+          <input
+            type="number"
+            value={quantity}
+            onChange={e => setQuantity(e.target.value)}
+            placeholder="0"
+            min="1"
+          />
+        </div>
+
+        <div className="form-row">
+          <label>Order Type</label>
+          <select value={orderType} onChange={e => setOrderType(e.target.value as OrderType)}>
+            <option value="market">Market</option>
+            <option value="limit">Limit</option>
+          </select>
+        </div>
+
+        {orderType === 'limit' && (
+          <div className="form-row">
+            <label>Limit Price ($)</label>
+            <input
+              type="number"
+              step="0.01"
+              value={limitPrice}
+              onChange={e => setLimitPrice(e.target.value)}
+              placeholder="0.00"
+            />
+          </div>
+        )}
+
+        <div className="estimate">
+          Estimated total: <strong>{formatCents(estimatedTotal)}</strong>
+        </div>
+
+        {error && <div className="error">{error}</div>}
+
+        <button type="submit" className={`submit ${side}`}>
+          {side === 'buy' ? 'Buy' : 'Sell'} {symbol}
+        </button>
+      </form>
+    </div>
+  );
+};
+'''
+
+# File 5: TradeHistory.tsx
+tradeHistory_tsx = '''/**
+ * TradeHistory.tsx — Executed trades list with verification status
+ */
+
+import React, { useState } from 'react';
+import { Trade, formatCents } from '../../lib/portfolio';
+
+interface TradeHistoryProps {
+  trades: Trade[];
+}
+
+export const TradeHistory: React.FC<TradeHistoryProps> = ({ trades }) => {
+  const [expandedTrade, setExpandedTrade] = useState<string | null>(null);
+
+  if (trades.length === 0) {
+    return (
+      <div className="trade-history">
+        <h2>Trade History</h2>
+        <div className="empty-state">No trades executed</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="trade-history">
+      <h2>Trade History ({trades.length})</h2>
+      
+      <div className="trade-list">
+        {trades.slice().reverse().map(trade => (
+          <TradeItem
+            key={trade.id}
+            trade={trade}
+            isExpanded={expandedTrade === trade.id}
+            onToggle={() => setExpandedTrade(
+              expandedTrade === trade.id ? null : trade.id
+            )}
+          />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const TradeItem: React.FC<{
+  trade: Trade;
+  isExpanded: boolean;
+  onToggle: () => void;
+}> = ({ trade, isExpanded, onToggle }) => {
+  const hasProof = !!trade.proof;
+
+  return (
+    <div className={`trade-item ${trade.side}`}>
+      <div className="trade-header" onClick={onToggle}>
+        <div className="trade-main">
+          <span className="side-badge">{trade.side.toUpperCase()}</span>
+          <span className="symbol">{trade.symbol}</span>
+          <span className="quantity">{trade.quantity} shares</span>
+          <span className="price">@ {formatCents(trade.price)}</span>
+        </div>
+        <div className="trade-meta">
+          <span className={`proof-status ${hasProof ? 'verified' : 'missing'}`}>
+            {hasProof ? '✓ Verified' : '○ No Proof'}
+          </span>
+          <span className="toggle">{isExpanded ? '▲' : '▼'}</span>
+        </div>
+      </div>
+
+      {isExpanded && hasProof && (
+        <div className="trade-details">
+          <VerificationPanel proof={trade.proof!} />
+        </div>
+      )}
+    </div>
+  );
+};
+
+const VerificationPanel: React.FC<{ proof: NonNullable<Trade['proof']> }> = ({ proof }) => {
+  const [copied, setCopied] = useState(false);
+
+  const copyProof = () => {
+    navigator.clipboard.writeText(JSON.stringify(proof, null, 2));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="verification-panel">
+      <h4>🔒 Bound Proof</h4>
+      <div className="proof-row">
+        <span className="label">Hash</span>
+        <span className="value truncate">{proof.hash}</span>
+      </div>
+      <div className="proof-row">
+        <span className="label">Signature</span>
+        <span className="value truncate">{proof.signature.slice(0, 32)}...</span>
+      </div>
+      <div className="proof-row">
+        <span className="label">Algorithm</span>
+        <span className="value">{proof.algorithm}</span>
+      </div>
+      <div className="proof-row">
+        <span className="label">Timestamp</span>
+        <span className="value">{proof.timestamp}</span>
+      </div>
+      <button className="btn-copy" onClick={copyProof}>
+        {copied ? '✓ Copied' : '📋 Copy Proof'}
+      </button>
+    </div>
+  );
+};
+'''
+
+# File 6: PriceChart.tsx
+priceChart_tsx = '''/**
+ * PriceChart.tsx — Simple price visualization
+ * 
+ * Lightweight SVG-based chart. No external dependencies.
+ */
+
+import React, { useMemo } from 'react';
+
+interface PricePoint {
+  timestamp: string;
+  price: number;  // In cents
+}
+
+interface PriceChartProps {
+  data: PricePoint[];
+  symbol: string;
+  width?: number;
+  height?: number;
+}
+
+export const PriceChart: React.FC<PriceChartProps> = ({
+  data,
+  symbol,
+  width = 400,
+  height = 200,
+}) => {
+  const { path, min, max, current } = useMemo(() => {
+    if (data.length < 2) return { path: '', min: 0, max: 0, current: 0 };
+
+    const prices = data.map(d => d.price);
+    const min = Math.min(...prices);
+    const max = Math.max(...prices);
+    const range = max - min || 1;
+
+    const padding = 20;
+    const chartWidth = width - padding * 2;
+    const chartHeight = height - padding * 2;
+
+    const points = data.map((d, i) => {
+      const x = padding + (i / (data.length - 1)) * chartWidth;
+      const y = padding + chartHeight - ((d.price - min) / range) * chartHeight;
+      return `${x},${y}`;
+    });
+
+    return {
+      path: `M ${points.join(' L ')}`,
+      min,
+      max,
+      current: prices[prices.length - 1],
+    };
+  }, [data, width, height]);
+
+  if (data.length < 2) {
+    return (
+      <div className="price-chart">
+        <h3>{symbol}</h3>
+        <div className="chart-placeholder">Insufficient data</div>
+      </div>
+    );
+  }
+
+  const change = data.length > 1 
+    ? ((current - data[0].price) / data[0].price) * 100 
+    : 0;
+
+  return (
+    <div className="price-chart">
+      <div className="chart-header">
+        <h3>{symbol}</h3>
+        <span className={`change ${change >= 0 ? 'positive' : 'negative'}`}>
+          {change >= 0 ? '+' : ''}{change.toFixed(2)}%
+        </span>
+      </div>
+      
+      <svg width={width} height={height} className="chart-svg">
+        {/* Grid lines */}
+        {[0, 0.25, 0.5, 0.75, 1].map(t => (
+          <line
+            key={t}
+            x1={20}
+            y1={20 + t * (height - 40)}
+            x2={width - 20}
+            y2={20 + t * (height - 40)}
+            stroke="#222"
+            strokeWidth="1"
+          />
+        ))}
+        
+        {/* Price line */}
+        <path
+          d={path}
+          fill="none"
+          stroke={change >= 0 ? '#00ff88' : '#ff3333'}
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        
+        {/* Current price dot */}
+        {data.length > 0 && (
+          <circle
+            cx={width - 20}
+            cy={20 + (height - 40) - ((current - min) / (max - min || 1)) * (height - 40)}
+            r="4"
+            fill={change >= 0 ? '#00ff88' : '#ff3333'}
+          />
+        )}
+      </svg>
+      
+      <div className="chart-footer">
+        <span>Low: ${(min / 100).toFixed(2)}</span>
+        <span>High: ${(max / 100).toFixed(2)}</span>
+      </div>
+    </div>
+  );
+};
+'''
+
+print("React components prepared:")
+for name, content in [
+    ("PortfolioPanel.tsx", portfolioPanel_tsx),
+    ("OrderForm.tsx", orderForm_tsx),
+    ("TradeHistory.tsx", tradeHistory_tsx),
+    ("PriceChart.tsx", priceChart_tsx),
+]:
+    print(f"  {name:25s} {len(content):>6,} bytes")
