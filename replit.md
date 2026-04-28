@@ -1,27 +1,20 @@
-# Workspace
+# Nexus Oracle TradePro
 
-## Overview
+Tron-inspired liquid-glass trading and market intelligence platform with 3D lattice visualizations.
 
-pnpm workspace monorepo using TypeScript. Each package manages its own dependencies.
+## Architecture
+- Frontend-only React + Vite app under `artifacts/nexus-oracle/`.
+- Routing: wouter, six pages (Console, Lattice, TradePro, Markets, Codex, Mystic Map).
+- Visuals: Three.js / @react-three/fiber / drei / postprocessing for 3D lattice; Recharts for market charts; framer-motion for entry animations; lucide-react for icons.
+- Trading engine: in-memory `MockPriceGenerator` (GBM ticks every 1.5s for 8 stocks) + `PortfolioManager`, exposed via `MarketContext`.
+- Theme: Tron palette (cyan #00d4ff, teal #00ffaa, magenta #ff00aa, amber #ffaa00, threshold red #ff4466) on dark navy bg, Orbitron / JetBrains Mono / Space Grotesk fonts.
+- WebGLGuard component falls back gracefully when WebGL is unavailable.
 
-## Stack
-
-- **Monorepo tool**: pnpm workspaces
-- **Node.js version**: 24
-- **Package manager**: pnpm
-- **TypeScript version**: 5.9
-- **API framework**: Express 5
-- **Database**: PostgreSQL + Drizzle ORM
-- **Validation**: Zod (`zod/v4`), `drizzle-zod`
-- **API codegen**: Orval (from OpenAPI spec)
-- **Build**: esbuild (CJS bundle)
-
-## Key Commands
-
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- `pnpm --filter @workspace/api-server run dev` — run API server locally
-
-See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
+## Files of note
+- `src/App.tsx` — routes + providers
+- `src/context/MarketContext.tsx` — live price + portfolio state
+- `src/lib/marketData.ts` — price generator
+- `src/lib/portfolio.ts` — order execution + positions
+- `src/lib/analystRatings.ts` — synthetic analyst consensus
+- `src/components/Lattice.tsx` (page) and `src/components/MiniLattice.tsx` — R3F 3D lattice
+- `src/pages/*.tsx` — Console, Lattice, TradePro, Markets, Codex, MysticMap
