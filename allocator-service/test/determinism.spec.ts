@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest";
 import { allocate } from "../src/solver/allocate";
 
 describe("determinism", () => {
-  it("produces stable hash regardless of item/node order", () => {
-    const a = allocate({
   it("produces identical output regardless of item/node/tag order", () => {
     const inputA = {
       items: [
@@ -16,9 +14,6 @@ describe("determinism", () => {
       ],
     });
 
-    const b = allocate({
-    };
-
     const inputB = {
       items: [
         { id: "i1", risk: 0.5 },
@@ -29,12 +24,6 @@ describe("determinism", () => {
         { id: "n2", capacity: 1, used: 0, tags: ["b", "a"] },
       ],
     });
-
-    expect(a.requestHash).toBe(b.requestHash);
-    expect(a.assignments).toEqual(b.assignments);
-  });
-});
-    };
 
     const a = allocate(inputA);
     const b = allocate(inputB);
