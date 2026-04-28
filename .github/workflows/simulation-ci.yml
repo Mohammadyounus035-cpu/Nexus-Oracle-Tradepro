@@ -22,19 +22,13 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: |
-          cd simulation
-          pip install -r requirements.txt
+        run: pip install -r simulation/requirements.txt
 
       - name: Run lattice topology analysis
-        run: |
-          cd simulation
-          python sovereign_lattice.py
+        run: python simulation/sovereign_lattice.py
 
       - name: Run multi-platform simulation
-        run: |
-          cd simulation
-          python nexus_simulation.py
+        run: python simulation/nexus_simulation.py
 
       - name: Upload simulation outputs
         uses: actions/upload-artifact@v4
