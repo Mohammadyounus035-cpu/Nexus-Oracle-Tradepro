@@ -1,0 +1,419 @@
+
+# ============================================================
+# PHASE 1 (continued): Updated verify.html
+# ============================================================
+
+verify_html = '''<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deep Human Nature Test — Artifact Verifier</title>
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --panel: #111111;
+    --border: #333333;
+    --text: #e0e0e0;
+    --muted: #888888;
+    --accent: #ff3333;
+    --accent-glow: rgba(255, 51, 51, 0.3);
+    --green: #00ff88;
+    --green-glow: rgba(0, 255, 136, 0.2);
+    --yellow: #ffaa00;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 20px;
+  }
+  .container { max-width: 800px; width: 100%; }
+  h1 {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--accent);
+    text-align: center;
+    margin-bottom: 8px;
+    text-shadow: 0 0 20px var(--accent-glow);
+  }
+  .subtitle {
+    text-align: center;
+    color: var(--muted);
+    font-size: 14px;
+    margin-bottom: 32px;
+  }
+  .input-section {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 24px;
+  }
+  .input-section h2 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 16px;
+    color: var(--text);
+  }
+  .paste-area {
+    width: 100%;
+    min-height: 180px;
+    background: #0a0a0a;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    color: var(--text);
+    font-family: 'SF Mono', monospace;
+    font-size: 12px;
+    resize: vertical;
+    margin-bottom: 16px;
+  }
+  .paste-area:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  .btn-verify {
+    width: 100%;
+    padding: 14px;
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 0 20px var(--accent-glow);
+    transition: all 0.2s;
+  }
+  .btn-verify:hover {
+    background: #ff5555;
+    box-shadow: 0 0 30px var(--accent-glow);
+  }
+  .results-section {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    display: none;
+  }
+  .results-section.active { display: block; }
+  .results-section h2 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 20px;
+    color: var(--text);
+  }
+  .status-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .status-card {
+    background: #0a0a0a;
+    border: 1px solid #222;
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+  }
+  .status-card .icon {
+    font-size: 32px;
+    margin-bottom: 8px;
+  }
+  .status-card .label {
+    font-size: 12px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+  }
+  .status-card .value {
+    font-size: 18px;
+    font-weight: 700;
+  }
+  .status-card.valid {
+    border-color: rgba(0, 255, 136, 0.3);
+    box-shadow: 0 0 15px var(--green-glow);
+  }
+  .status-card.valid .icon { color: var(--green); }
+  .status-card.valid .value { color: var(--green); }
+  .status-card.invalid {
+    border-color: rgba(255, 51, 51, 0.3);
+    box-shadow: 0 0 15px var(--accent-glow);
+  }
+  .status-card.invalid .icon { color: var(--accent); }
+  .status-card.invalid .value { color: var(--accent); }
+  .details-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .details-table th {
+    text-align: left;
+    padding: 10px 12px;
+    color: var(--muted);
+    font-weight: 500;
+    border-bottom: 1px solid #222;
+  }
+  .details-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #1a1a1a;
+    font-family: 'SF Mono', monospace;
+    font-size: 12px;
+  }
+  .details-table td:first-child {
+    color: var(--muted);
+    width: 140px;
+  }
+  .details-table td:last-child {
+    color: var(--text);
+    word-break: break-all;
+  }
+  .error-message {
+    background: rgba(255, 51, 51, 0.1);
+    border: 1px solid rgba(255, 51, 51, 0.3);
+    border-radius: 8px;
+    padding: 16px;
+    color: var(--accent);
+    font-size: 14px;
+    display: none;
+  }
+  .error-message.active { display: block; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Artifact Verifier</h1>
+  <p class="subtitle">Verify Deep Human Nature Test artifacts independently</p>
+  
+  <div class="input-section">
+    <h2>Paste Artifact</h2>
+    <textarea class="paste-area" id="artifactInput" placeholder="Paste the complete artifact JSON here..."></textarea>
+    <button class="btn-verify" onclick="verifyArtifact()">Verify Artifact</button>
+  </div>
+  
+  <div class="error-message" id="errorMsg"></div>
+  
+  <div class="results-section" id="results">
+    <h2>Verification Results</h2>
+    
+    <div class="status-grid">
+      <div class="status-card" id="hashCard">
+        <div class="icon" id="hashIcon">◯</div>
+        <div class="label">Hash Validity</div>
+        <div class="value" id="hashValue">—</div>
+      </div>
+      <div class="status-card" id="sigCard">
+        <div class="icon" id="sigIcon">◯</div>
+        <div class="label">Signature Validity</div>
+        <div class="value" id="sigValue">—</div>
+      </div>
+    </div>
+    
+    <table class="details-table">
+      <tr><th colspan="2">Artifact Details</th></tr>
+      <tr><td>Version</td><td id="detailVersion">—</td></tr>
+      <tr><td>Timestamp</td><td id="detailTimestamp">—</td></tr>
+      <tr><td>Identity</td><td id="detailIdentity">—</td></tr>
+      <tr><td>Answers</td><td id="detailAnswers">—</td></tr>
+      <tr><td>Algorithm</td><td id="detailAlgo">—</td></tr>
+      <tr><td>Hash</td><td id="detailHash">—</td></tr>
+      <tr><td>Signature</td><td id="detailSig">—</td></tr>
+    </table>
+  </div>
+</div>
+
+<script type="module">
+/**
+ * canonical() — Same implementation as unified-test.html
+ * MUST be byte-for-byte identical for hash verification to work.
+ */
+function canonical(obj) {
+  return _canonicalize(obj);
+}
+
+function _canonicalize(obj) {
+  if (obj === null) return 'null';
+  if (typeof obj === 'boolean') return obj ? 'true' : 'false';
+  if (typeof obj === 'number') return _canonicalNumber(obj);
+  if (typeof obj === 'string') return JSON.stringify(obj);
+  if (Array.isArray(obj)) {
+    return '[' + obj.map(_canonicalize).join(',') + ']';
+  }
+  if (typeof obj === 'object') {
+    const keys = Object.keys(obj).sort();
+    const pairs = keys.map(k => JSON.stringify(k) + ':' + _canonicalize(obj[k]));
+    return '{' + pairs.join(',') + '}';
+  }
+  throw new TypeError(`JCS: unsupported type ${typeof obj}`);
+}
+
+function _canonicalNumber(n) {
+  if (!Number.isFinite(n)) {
+    throw new Error('JCS: NaN and Infinity are not permitted');
+  }
+  if (Number.isInteger(n)) return String(n);
+  let s = n.toFixed(20);
+  s = s.replace(/0+$/, '').replace(/\.$/, '');
+  if (s.includes('e') || s.includes('E')) {
+    s = _expandScientific(s);
+  }
+  return s;
+}
+
+function _expandScientific(s) {
+  const [mantissa, expStr] = s.toLowerCase().split('e');
+  const exp = parseInt(expStr, 10);
+  let digits = mantissa.replace('.', '');
+  if (exp >= 0) {
+    if (exp >= digits.length - 1) {
+      return digits + '0'.repeat(exp - digits.length + 1);
+    }
+    return digits.slice(0, exp + 1) + '.' + digits.slice(exp + 1).replace(/0+$/, '').replace(/\.$/, '');
+  } else {
+    return '0.' + '0'.repeat(-exp - 1) + digits;
+  }
+}
+
+async function canonicalHash(obj) {
+  const bytes = new TextEncoder().encode(canonical(obj));
+  const hashBuffer = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+/**
+ * Verify Ed25519 signature using tweetnacl
+ */
+async function verifySignature(messageBytes, signatureHex, publicKeyHex) {
+  const nacl = window.nacl || await loadTweetNacl();
+  const signature = hexToBytes(signatureHex);
+  const publicKey = hexToBytes(publicKeyHex);
+  return nacl.sign.detached.verify(messageBytes, signature, publicKey);
+}
+
+async function loadTweetNacl() {
+  if (typeof window !== 'undefined' && window.nacl) return window.nacl;
+  // Load from CDN
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js';
+    script.onload = () => resolve(window.nacl);
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+}
+
+function hexToBytes(hex) {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.slice(i, i + 2), 16);
+  }
+  return bytes;
+}
+
+// Main verification
+window.verifyArtifact = async function() {
+  const input = document.getElementById('artifactInput').value.trim();
+  const errorEl = document.getElementById('errorMsg');
+  const resultsEl = document.getElementById('results');
+  
+  errorEl.classList.remove('active');
+  resultsEl.classList.remove('active');
+  
+  try {
+    const artifact = JSON.parse(input);
+    
+    // Validate structure
+    if (!artifact.version || !artifact.timestamp || !artifact.identity || !artifact.answers) {
+      throw new Error('Missing required fields in artifact');
+    }
+    
+    // Recompute hash
+    const payload = {
+      version: artifact.version,
+      timestamp: artifact.timestamp,
+      identity: artifact.identity,
+      answers: artifact.answers,
+    };
+    const recomputedHash = await canonicalHash(payload);
+    const hashValid = recomputedHash === artifact.hash;
+    
+    // Verify signature (requires public key — in practice, this would be resolved
+    // from identity fingerprint via a registry or the artifact would include pubkey)
+    let sigValid = false;
+    let sigChecked = false;
+    
+    if (artifact.signature && artifact.publicKey) {
+      const messageBytes = new TextEncoder().encode(canonical(payload));
+      sigValid = await verifySignature(messageBytes, artifact.signature, artifact.publicKey);
+      sigChecked = true;
+    }
+    
+    // Update UI
+    updateStatusCard('hash', hashValid);
+    updateStatusCard('sig', sigValid, !sigChecked);
+    
+    document.getElementById('detailVersion').textContent = artifact.version;
+    document.getElementById('detailTimestamp').textContent = artifact.timestamp;
+    document.getElementById('detailIdentity').textContent = artifact.identity;
+    document.getElementById('detailAnswers').textContent = 
+      `Decision: ${artifact.answers.decision}, Uncertainty: ${artifact.answers.uncertainty}, Change: ${artifact.answers.change}`;
+    document.getElementById('detailAlgo').textContent = artifact.algorithm || 'Unknown';
+    document.getElementById('detailHash').textContent = artifact.hash;
+    document.getElementById('detailSig').textContent = artifact.signature ? 
+      (artifact.signature.slice(0, 48) + '...') : 'Not provided';
+    
+    resultsEl.classList.add('active');
+    
+  } catch (e) {
+    errorEl.textContent = 'Error: ' + e.message;
+    errorEl.classList.add('active');
+  }
+};
+
+function updateStatusCard(type, valid, unchecked = false) {
+  const card = document.getElementById(type + 'Card');
+  const icon = document.getElementById(type + 'Icon');
+  const value = document.getElementById(type + 'Value');
+  
+  card.className = 'status-card ' + (valid ? 'valid' : 'invalid');
+  
+  if (unchecked) {
+    icon.textContent = '?';
+    value.textContent = 'No Key';
+    card.className = 'status-card';
+    return;
+  }
+  
+  if (valid) {
+    icon.textContent = '✓';
+    value.textContent = 'Valid';
+  } else {
+    icon.textContent = '✗';
+    value.textContent = 'Invalid';
+  }
+}
+</script>
+</body>
+</html>'''
+
+# Write all Phase 1 files
+output_dir = Path("/mnt/agents/output")
+
+(output_dir / "identity.js").write_text(identity_js)
+(output_dir / "canonical.js").write_text(canonical_js)
+(output_dir / "unified-test.html").write_text(unified_test_html)
+(output_dir / "verify.html").write_text(verify_html)
+
+print("Phase 1 complete. Files generated:")
+for f in ["identity.js", "canonical.js", "unified-test.html", "verify.html"]:
+    size = (output_dir / f).stat().st_size
+    print(f"  {f:25s} {size:>8,} bytes")

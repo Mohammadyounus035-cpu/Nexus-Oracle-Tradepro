@@ -1,0 +1,232 @@
+
+# ============================================================
+# PHASE 1: DEEP HUMAN NATURE TEST UI
+# ============================================================
+
+# File 1: identity.js — Persistent Identity Manager
+identity_js = '''/**
+ * identity.js — Persistent Ed25519 Identity Manager
+ * 
+ * Stores key pairs in IndexedDB (`omega_identity` database).
+ * Provides getOrCreateIdentity() for cross-session correlation.
+ * Fingerprint = SHA-256(publicKey) truncated to 16 hex chars.
+ */
+
+const DB_NAME = 'omega_identity';
+const DB_VERSION = 1;
+const STORE_NAME = 'keys';
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => resolve(req.result);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      }
+    };
+  });
+}
+
+async function generateKeyPair() {
+  // Use Web Crypto API for Ed25519 (modern browsers)
+  // Fallback: generate random bytes and warn if Ed25519 not available
+  const algo = { name: 'Ed25519' };
+  try {
+    const keyPair = await crypto.subtle.generateKey(algo, true, ['sign', 'verify']);
+    const pubRaw = await crypto.subtle.exportKey('raw', keyPair.publicKey);
+    const privRaw = await crypto.subtle.exportKey('raw', keyPair.privateKey);
+    return {
+      publicKey: new Uint8Array(pubRaw),
+      privateKey: new Uint8Array(privRaw),
+    };
+  } catch (e) {
+    // Fallback: tweetnacl-style random generation if Web Crypto fails
+    console.warn('Web Crypto Ed25519 unavailable, using fallback');
+    const nacl = window.nacl || await loadTweetNacl();
+    const pair = nacl.sign.keyPair();
+    return {
+      publicKey: pair.publicKey,
+      privateKey: pair.secretKey,
+    };
+  }
+}
+
+async function loadTweetNacl() {
+  // Dynamic import or global check
+  if (typeof window !== 'undefined' && window.nacl) return window.nacl;
+  throw new Error('tweetnacl not available. Include <script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl.min.js"></script>');
+}
+
+function computeFingerprint(publicKey) {
+  return crypto.subtle.digest('SHA-256', publicKey).then(hash => {
+    const hex = Array.from(new Uint8Array(hash))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+    return hex.slice(0, 16); // Truncate to 16 chars for display
+  });
+}
+
+/**
+ * Get existing identity or create new one.
+ * Returns: { publicKey: Uint8Array, privateKey: Uint8Array, fingerprint: string, isNew: boolean }
+ */
+export async function getOrCreateIdentity() {
+  const db = await openDB();
+  
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readonly');
+    const store = tx.objectStore(STORE_NAME);
+    const req = store.get('primary');
+    
+    req.onsuccess = async () => {
+      if (req.result) {
+        // Existing identity found
+        const identity = req.result;
+        const fingerprint = await computeFingerprint(
+          new Uint8Array(identity.publicKey)
+        );
+        resolve({
+          publicKey: new Uint8Array(identity.publicKey),
+          privateKey: new Uint8Array(identity.privateKey),
+          fingerprint,
+          isNew: false,
+        });
+      } else {
+        // Generate new identity
+        const keyPair = await generateKeyPair();
+        const fingerprint = await computeFingerprint(keyPair.publicKey);
+        
+        const tx2 = db.transaction(STORE_NAME, 'readwrite');
+        const store2 = tx2.objectStore(STORE_NAME);
+        store2.put({
+          id: 'primary',
+          publicKey: Array.from(keyPair.publicKey),
+          privateKey: Array.from(keyPair.privateKey),
+          createdAt: new Date().toISOString(),
+        });
+        
+        tx2.oncomplete = () => {
+          resolve({
+            publicKey: keyPair.publicKey,
+            privateKey: keyPair.privateKey,
+            fingerprint,
+            isNew: true,
+          });
+        };
+        tx2.onerror = () => reject(tx2.error);
+      }
+    };
+    
+    req.onerror = () => reject(req.error);
+  });
+}
+
+/**
+ * Clear stored identity (for testing / reset).
+ */
+export async function clearIdentity() {
+  const db = await openDB();
+  const tx = db.transaction(STORE_NAME, 'readwrite');
+  tx.objectStore(STORE_NAME).delete('primary');
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+/**
+ * Export identity as JSON (for backup / migration).
+ */
+export async function exportIdentity() {
+  const identity = await getOrCreateIdentity();
+  return {
+    publicKey: Array.from(identity.publicKey),
+    fingerprint: identity.fingerprint,
+    exportedAt: new Date().toISOString(),
+  };
+}
+'''
+
+# File 2: canonical.js — Strict JCS Canonicalization
+canonical_js = '''/**
+ * canonical.js — RFC 8785 JSON Canonicalization Scheme (JCS)
+ * 
+ * Provides deterministic JSON serialization for cryptographic hashing.
+ * Guarantees: same object → same bytes → same hash, always.
+ */
+
+/**
+ * Serialize any JSON-serializable object to canonical form.
+ * Rules: sorted keys, no whitespace, shortest decimal numbers, no scientific notation.
+ */
+export function canonical(obj) {
+  return _canonicalize(obj);
+}
+
+function _canonicalize(obj) {
+  if (obj === null) return 'null';
+  if (typeof obj === 'boolean') return obj ? 'true' : 'false';
+  if (typeof obj === 'number') return _canonicalNumber(obj);
+  if (typeof obj === 'string') return JSON.stringify(obj);
+  if (Array.isArray(obj)) {
+    return '[' + obj.map(_canonicalize).join(',') + ']';
+  }
+  if (typeof obj === 'object') {
+    const keys = Object.keys(obj).sort();
+    const pairs = keys.map(k => JSON.stringify(k) + ':' + _canonicalize(obj[k]));
+    return '{' + pairs.join(',') + '}';
+  }
+  throw new TypeError(`JCS: unsupported type ${typeof obj}`);
+}
+
+function _canonicalNumber(n) {
+  if (!Number.isFinite(n)) {
+    throw new Error('JCS: NaN and Infinity are not permitted');
+  }
+  if (Number.isInteger(n)) return String(n);
+  
+  // Use toFixed with enough precision, then strip trailing zeros
+  let s = n.toFixed(20);
+  s = s.replace(/0+$/, '').replace(/\.$/, '');
+  
+  // Ensure no scientific notation (JCS requirement)
+  if (s.includes('e') || s.includes('E')) {
+    s = _expandScientific(s);
+  }
+  
+  return s;
+}
+
+function _expandScientific(s) {
+  const [mantissa, expStr] = s.toLowerCase().split('e');
+  const exp = parseInt(expStr, 10);
+  let digits = mantissa.replace('.', '');
+  
+  if (exp >= 0) {
+    if (exp >= digits.length - 1) {
+      return digits + '0'.repeat(exp - digits.length + 1);
+    }
+    return digits.slice(0, exp + 1) + '.' + digits.slice(exp + 1).replace(/0+$/, '').replace(/\.$/, '');
+  } else {
+    return '0.' + '0'.repeat(-exp - 1) + digits;
+  }
+}
+
+/**
+ * Compute SHA-256 hash of canonical JSON.
+ */
+export async function canonicalHash(obj) {
+  const bytes = new TextEncoder().encode(canonical(obj));
+  const hashBuffer = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+'''
+
+print("Phase 1 core modules prepared:")
+print(f"  identity.js: {len(identity_js)} bytes")
+print(f"  canonical.js: {len(canonical_js)} bytes")

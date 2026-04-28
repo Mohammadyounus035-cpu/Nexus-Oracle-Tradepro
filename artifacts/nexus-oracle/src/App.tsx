@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AnimatePresence } from "framer-motion";
 import { MarketProvider } from "./context/MarketContext";
 import Layout from "./components/Layout";
+import AlertOverlay from "./components/AlertOverlay";
 import Console from "./pages/Console";
 import Lattice from "./pages/Lattice";
 import TradePro from "./pages/TradePro";
@@ -40,6 +41,7 @@ function App() {
             <Layout>
               <Router />
             </Layout>
+            <AlertOverlay />
           </WouterRouter>
           <Toaster />
         </TooltipProvider>
