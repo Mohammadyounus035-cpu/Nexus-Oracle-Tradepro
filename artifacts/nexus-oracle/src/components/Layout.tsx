@@ -1,11 +1,23 @@
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Activity, Clock } from "lucide-react";
+import { Activity, Clock, Radio } from "lucide-react";
 import BrandMark from "./BrandMark";
 import NewsTicker from "./NewsTicker";
+import ResonanceWave from "./ResonanceWave";
 
 export default function Layout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
+  const [drift, setDrift] = useState(0);
+  const [now, setNow] = useState(() => new Date().toISOString());
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      // micro-drift around 0.000% to feel alive but always within envelope
+      setDrift((Math.random() - 0.5) * 0.008);
+      setNow(new Date().toISOString());
+    }, 1500);
+    return () => clearInterval(id);
+  }, []);
 
   const navLinks = [
     { href: "/", label: "Console" },
@@ -16,6 +28,8 @@ export default function Layout({ children }: { children: ReactNode }) {
     { href: "/mystic-map", label: "Mystic Map" },
   ];
 
+  const driftStr = (drift >= 0 ? "+" : "") + drift.toFixed(3) + "%";
+
   return (
     <div className="min-h-screen flex flex-col text-foreground font-sans">
       {/* Top Header */}
@@ -25,6 +39,12 @@ export default function Layout({ children }: { children: ReactNode }) {
           <h1 className="font-serif font-bold text-lg tracking-widest neon-cyan">
             NEXUS ORACLE <span className="opacity-50">·</span> TRADEPRO
           </h1>
+          <div
+            className="hidden md:flex items-center gap-2 ml-3 pl-3 border-l border-primary/20"
+            data-testid="header-resonance"
+          >
+            <ResonanceWave width={88} height={24} />
+          </div>
         </div>
 
         <nav className="flex items-center gap-1">
@@ -54,8 +74,12 @@ export default function Layout({ children }: { children: ReactNode }) {
             </span>
             STREAMING · LIVE
           </div>
-          <div className="text-muted-foreground">
-            DRIFT <span className="text-primary">0.000%</span>
+          <div className="hidden sm:flex items-center gap-1 text-primary border border-primary/30 px-2 py-0.5 rounded">
+            <Radio className="w-3 h-3" />
+            MIRROR HOLDS
+          </div>
+          <div className="text-muted-foreground tabular-nums">
+            DRIFT <span className={Math.abs(drift) < 0.005 ? "text-accent" : "text-primary"}>{driftStr}</span>
           </div>
         </div>
       </header>
@@ -71,11 +95,14 @@ export default function Layout({ children }: { children: ReactNode }) {
       {/* Bottom Status Bar */}
       <footer className="h-8 glass-panel rounded-none border-t border-primary/30 flex items-center justify-between px-4 z-50 text-xs font-mono text-muted-foreground sticky bottom-0">
         <div className="flex items-center gap-4">
-          <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {new Date().toISOString()}</span>
+          <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {now}</span>
+          <span className="hidden md:inline">L0_TRACK <span className="text-accent">CONFIRMED</span></span>
+          <span className="hidden lg:inline">L4_FAN <span className="text-primary">ACTIVE</span></span>
         </div>
         <div className="flex items-center gap-4">
+          <span className="hidden sm:inline">τ <span className="text-accent">&gt; 50%</span></span>
           <span>LATENCY: <span className="text-accent">12ms</span></span>
-          <span>PHASE-LOCK: <span className="text-primary">OPTIMAL</span></span>
+          <span>PHASE-LOCK: <span className="text-primary">STABLE</span></span>
           <Activity className="w-3 h-3 text-primary animate-pulse" />
         </div>
       </footer>

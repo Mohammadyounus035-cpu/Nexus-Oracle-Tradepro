@@ -3,6 +3,9 @@ import { motion } from "framer-motion";
 import { Eye, Activity } from "lucide-react";
 import GlassCard from "../components/GlassCard";
 import MiniLattice from "../components/MiniLattice";
+import HardenStatusPanel from "../components/HardenStatusPanel";
+import SabrLoopPanel from "../components/SabrLoopPanel";
+import SystemEnvelopePanel from "../components/SystemEnvelopePanel";
 import { generateHeadline } from "../lib/newsFeed";
 
 interface ConsoleSignal {
@@ -226,6 +229,16 @@ export default function Console() {
           </div>
         </div>
       </div>
+
+      {/* HARDEN / SABR / ENVELOPE — distributed-trust telemetry */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <HardenStatusPanel />
+        <div className="lg:col-span-2">
+          <SabrLoopPanel />
+        </div>
+      </div>
+
+      <SystemEnvelopePanel />
     </motion.div>
   );
 }
