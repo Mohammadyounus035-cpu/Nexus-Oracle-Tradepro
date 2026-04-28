@@ -6,11 +6,7 @@ import type { AllocatorResponse, Vector } from "../src/matrix/testMatrix";
 import { safeRunAllocator } from "../src/runtime/enforce";
 import { allocate } from "../src/matrix/allocator";
 import { buildCanonical } from "../src/matrix/canonical";
-import { isValidVector } from "../src/matrix/constraints";
-import { generateAllVectors } from "../src/matrix/generator";
-import { assertInvariants } from "../src/matrix/invariants";
 import { computeMetrics } from "../src/matrix/metrics";
-import type { Vector } from "../src/matrix/testMatrix";
 
 const V18: Vector = {
   env: "preview",
@@ -25,7 +21,6 @@ const V42: Vector = {
   mode: "non-streaming",
   risk: "high",
   decision: "defer",
-  decision: "model",
   auth: "protected",
 };
 
