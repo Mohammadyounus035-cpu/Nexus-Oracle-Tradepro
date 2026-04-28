@@ -1,0 +1,32 @@
+name: Data Ingestion
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"  # every 30 min
+  workflow_dispatch:
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm install
+
+      - run: npx ts-node ingest.ts
+        env:
+          DATABENTO_API_KEY: ${{ secrets.DATABENTO_API_KEY }}
+
+      - name: Commit and push ingested data
+        run: |
+          git config user.name "data-bot"
+          git config user.email "data-bot@github.com"
+          git add data/
+          git commit -m "chore: automated data ingestion" || echo "no changes"
+          git push
+        if: always()
