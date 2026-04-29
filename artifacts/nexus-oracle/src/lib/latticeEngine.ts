@@ -57,7 +57,7 @@ const HISTORY_LEN = 24;
 const PUBLIC_KEY = "ed25519:omega-v0.4.2:nx-oracle:" + "a3c7".repeat(8);
 
 // ---------- helpers ----------
-function stableStringify(v: unknown): string {
+export function stableStringify(v: unknown): string {
   if (v === null || typeof v !== "object") return JSON.stringify(v);
   if (Array.isArray(v)) return "[" + v.map(stableStringify).join(",") + "]";
   const obj = v as Record<string, unknown>;
@@ -65,7 +65,7 @@ function stableStringify(v: unknown): string {
   return "{" + keys.map(k => JSON.stringify(k) + ":" + stableStringify(obj[k])).join(",") + "}";
 }
 
-async function sha256Hex(s: string): Promise<string> {
+export async function sha256Hex(s: string): Promise<string> {
   if (typeof crypto !== "undefined" && crypto.subtle) {
     const buf = new TextEncoder().encode(s);
     const hash = await crypto.subtle.digest("SHA-256", buf);

@@ -8,6 +8,7 @@ import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip } from "rec
 import { getConsensus } from "../lib/analystRatings";
 import { Activity, Trash2, Bell } from "lucide-react";
 import { Input } from "../components/ui/input";
+import TradingSignalPanel from "../components/TradingSignalPanel";
 
 export default function TradePro() {
   const { prices, portfolio, trades, executeOrder, selectedSymbol, setSelectedSymbol, history, customSymbols, removeTicker, alerts, recentTriggers } = useMarket();
@@ -58,7 +59,7 @@ export default function TradePro() {
   };
 
   return (
-    <div className="p-6 max-w-[1800px] mx-auto flex flex-col h-[calc(100vh-6rem)]">
+    <div className="p-6 max-w-[1800px] mx-auto flex flex-col min-h-[calc(100vh-6rem)]">
       {/* Drift Check Banner */}
       <div className="mb-4 glass-panel bg-primary/5 border-primary/20 p-2 px-4 flex justify-between items-center text-sm font-mono">
         <div className="flex items-center gap-2">
@@ -165,6 +166,9 @@ export default function TradePro() {
               </ResponsiveContainer>
             </div>
           </GlassCard>
+
+          {/* Live lattice signal */}
+          <TradingSignalPanel />
 
           {/* Order Ticket */}
           <GlassCard className="p-4 shrink-0">

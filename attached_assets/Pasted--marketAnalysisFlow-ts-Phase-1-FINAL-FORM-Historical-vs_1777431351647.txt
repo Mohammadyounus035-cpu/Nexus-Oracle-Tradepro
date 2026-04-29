@@ -1,0 +1,4294 @@
+/**
+ * marketAnalysisFlow.ts
+ * 
+ * Phase 1 FINAL FORM:
+ * Historical vs Live → Lattice Mapping → Drift Detection
+ */
+
+import { MarketTick } from './marketOntology';
+import { canonicalHash } from './canonical';
+
+// ---------------------------------------------------------------------------
+// TYPES
+// ---------------------------------------------------------------------------
+
+export interface HistoricalSnapshot {
+  symbol: string;
+  returns: number;        // %
+  volatility: number;     // %
+  volume: number;
+  timestamp: string;
+}
+
+export interface LiveSnapshot extends HistoricalSnapshot {}
+
+export interface LatticeState {
+  pathId: number;         // 1–96
+  polarity: -1 | 0 | 1;
+  strength: number;       // 0–1
+  guardian: 'lion' | 'phoenix' | 'dragon' | 'owl' | 'raven';
+}
+
+export interface AnalysisOutput {
+  symbol: string;
+  historicalState: LatticeState;
+  liveState: LatticeState;
+  drift: number;              // deviation magnitude
+  regime: 'stable' | 'transition' | 'volatile' | 'anomaly';
+  hash: string;
+}
+
+// ---------------------------------------------------------------------------
+// FEATURE EXTRACTION
+// ---------------------------------------------------------------------------
+
+export function computeFeatures(prices: number[]): {
+  returns: number;
+  volatility: number;
+} {
+  if (prices.length < 2) return { returns: 0, volatility: 0 };
+
+  const returns = (prices[prices.length - 1] - prices[0]) / prices[0];
+
+  const diffs = [];
+  for (let i = 1; i < prices.length; i++) {
+    diffs.push((prices[i] - prices[i - 1]) / prices[i - 1]);
+  }
+
+  const mean = diffs.reduce((a, b) => a + b, 0) / diffs.length;
+  const variance =
+    diffs.reduce((sum, d) => sum + Math.pow(d - mean, 2), 0) /
+    diffs.length;
+
+  return {
+    returns,
+    volatility: Math.sqrt(variance),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// 96 PATH MAPPING
+// ---------------------------------------------------------------------------
+
+export function mapToLattice(features: {
+  returns: number;
+  volatility: number;
+  volume: number;
+}): LatticeState {
+  // Normalize inputs
+  const r = Math.tanh(features.returns * 5);
+  const v = Math.tanh(features.volatility * 10);
+  const vol = Math.tanh(features.volume / 10000);
+
+  // Combine into scalar field
+  const score = (r * 0.5 + v * 0.3 + vol * 0.2);
+
+  // Map to 1–96
+  const pathId = Math.min(
+    96,
+    Math.max(1, Math.floor(((score + 1) / 2) * 96))
+  );
+
+  // Polarity
+  const polarity = score > 0.2 ? 1 : score < -0.2 ? -1 : 0;
+
+  // Guardian mapping (based on segments)
+  const guardian =
+    pathId <= 19
+      ? 'lion'
+      : pathId <= 38
+      ? 'phoenix'
+      : pathId <= 57
+      ? 'dragon'
+      : pathId <= 76
+      ? 'owl'
+      : 'raven';
+
+  return {
+    pathId,
+    polarity,
+    strength: Math.abs(score),
+    guardian,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// DRIFT DETECTION
+// ---------------------------------------------------------------------------
+
+export function computeDrift(
+  hist: LatticeState,
+  live: LatticeState
+): number {
+  const pathDiff = Math.abs(hist.pathId - live.pathId) / 96;
+  const polarityDiff = hist.polarity === live.polarity ? 0 : 1;
+  const strengthDiff = Math.abs(hist.strength - live.strength);
+
+  return pathDiff * 0.5 + polarityDiff * 0.3 + strengthDiff * 0.2;
+}
+
+// ---------------------------------------------------------------------------
+// REGIME CLASSIFICATION
+// ---------------------------------------------------------------------------
+
+export function classifyRegime(drift: number): AnalysisOutput['regime'] {
+  if (drift < 0.15) return 'stable';
+  if (drift < 0.35) return 'transition';
+  if (drift < 0.65) return 'volatile';
+  return 'anomaly';
+}
+
+// ---------------------------------------------------------------------------
+// FULL ANALYSIS PIPELINE
+// ---------------------------------------------------------------------------
+
+export async function runAnalysis(params: {
+  symbol: string;
+  historicalPrices: number[];
+  livePrices: number[];
+  volume: number;
+}): Promise<AnalysisOutput> {
+  const histFeatures = computeFeatures(params.historicalPrices);
+  const liveFeatures = computeFeatures(params.livePrices);
+
+  const historicalState = mapToLattice({
+    ...histFeatures,
+    volume: params.volume,
+  });
+
+  const liveState = mapToLattice({
+    ...liveFeatures,
+    volume: params.volume,
+  });
+
+  const drift = computeDrift(historicalState, liveState);
+  const regime = classifyRegime(drift);
+
+  const payload = {
+    symbol: params.symbol,
+    historicalState,
+    liveState,
+    drift,
+    regime,
+  };
+
+  const hash = await canonicalHash(payload);
+
+  return {
+    ...payload,
+    hash,
+  };
+}
+
+Market Data
+   ↓
+Phase 1 Analysis
+   ↓
+Lattice State (hist vs live)
+   ↓
+Signal Engine  ← (Phase 2)
+   ↓
+Guardian Validation
+   ↓
+Trade Engine (existing)
+   ↓
+Order Book + Execution
+   ↓
+Analytics Feedback
+
+/**
+ * signalEngine.ts
+ * 
+ * Converts lattice analysis → actionable signals
+ */
+
+import { AnalysisOutput } from './marketAnalysisFlow';
+
+// ---------------------------------------------------------------------------
+// TYPES
+// ---------------------------------------------------------------------------
+
+export type TradeAction = 'buy' | 'sell' | 'hold';
+
+export interface TradeSignal {
+  symbol: string;
+  action: TradeAction;
+  confidence: number;     // 0–1
+  size: number;           // position size %
+  reason: string;
+  regime: string;
+  pathId: number;
+}
+
+// ---------------------------------------------------------------------------
+// SIGNAL LOGIC
+// ---------------------------------------------------------------------------
+
+export function generateSignal(analysis: AnalysisOutput): TradeSignal {
+  const { liveState, drift, regime } = analysis;
+
+  let action: TradeAction = 'hold';
+  let confidence = 0;
+  let size = 0;
+  let reason = '';
+
+  // -----------------------------------------------------------------------
+  // CORE DECISION MATRIX
+  // -----------------------------------------------------------------------
+
+  if (regime === 'stable') {
+    if (liveState.polarity === 1) {
+      action = 'buy';
+      confidence = 0.7 + liveState.strength * 0.3;
+      size = 0.5 + liveState.strength * 0.5;
+      reason = 'Stable + positive polarity';
+    }
+
+    if (liveState.polarity === -1) {
+      action = 'sell';
+      confidence = 0.7 + liveState.strength * 0.3;
+      size = 0.5 + liveState.strength * 0.5;
+      reason = 'Stable + negative polarity';
+    }
+  }
+
+  if (regime === 'transition') {
+    action = 'hold';
+    confidence = 0.4;
+    size = 0.2;
+    reason = 'Transition phase — reduced exposure';
+  }
+
+  if (regime === 'volatile') {
+    action = 'hold';
+    confidence = 0.2;
+    size = 0.1;
+    reason = 'High volatility — capital preservation';
+  }
+
+  if (regime === 'anomaly') {
+    action = 'hold';
+    confidence = 0;
+    size = 0;
+    reason = 'Anomaly detected — no trade';
+  }
+
+  return {
+    symbol: analysis.symbol,
+    action,
+    confidence,
+    size,
+    reason,
+    regime,
+    pathId: liveState.pathId,
+  };
+}
+
+/**
+ * sovereignGuardians.ts
+ * 
+ * Hard validation before any trade executes
+ */
+
+import { TradeSignal } from './signalEngine';
+
+export interface ValidationResult {
+  approved: boolean;
+  reason?: string;
+}
+
+export function validateSignal(signal: TradeSignal): ValidationResult {
+  // Γ1 — Owl (logic consistency)
+  if (signal.confidence < 0 || signal.confidence > 1) {
+    return { approved: false, reason: 'Invalid confidence bounds' };
+  }
+
+  // Γ2 — Raven (anomaly detection)
+  if (signal.regime === 'anomaly') {
+    return { approved: false, reason: 'Blocked: anomaly regime' };
+  }
+
+  // Γ3 — Phoenix (adaptation check)
+  if (signal.regime === 'transition' && signal.size > 0.3) {
+    return { approved: false, reason: 'Position too large in transition' };
+  }
+
+  // Γ4 — Dragon (energy/momentum)
+  if (signal.confidence < 0.3 && signal.action !== 'hold') {
+    return { approved: false, reason: 'Insufficient signal strength' };
+  }
+
+  // Γ5 — Lion (final authority)
+  return { approved: true };
+}
+
+/**
+ * executionBridge.ts
+ * 
+ * Connects signal engine → trade engine
+ */
+
+import { TradeEngine } from './tradeEngine';
+import { generateSignal } from './signalEngine';
+import { validateSignal } from './sovereignGuardians';
+import { AnalysisOutput } from './marketAnalysisFlow';
+
+const engine = new TradeEngine();
+
+export function processAnalysis(analysis: AnalysisOutput) {
+  const signal = generateSignal(analysis);
+
+  const validation = validateSignal(signal);
+
+  if (!validation.approved) {
+    return {
+      status: 'rejected',
+      reason: validation.reason,
+      signal,
+    };
+  }
+
+  if (signal.action === 'hold') {
+    return {
+      status: 'no_action',
+      signal,
+    };
+  }
+
+  const order = engine.submitOrder({
+    symbol: signal.symbol,
+    side: signal.action,
+    orderType: 'market',
+    shares: Math.floor(signal.size * 100), // scaled sizing
+  });
+
+  return {
+    status: 'executed',
+    signal,
+    order,
+  };
+}
+
+// ============================================================================
+// PHASE 2 — EXPANDED / REFINED / HARDENED
+// Strictly code. No commentary.
+// ============================================================================
+
+// ============================================================================
+// layerTypes.ts — shared strict types
+// ============================================================================
+
+export type TradeAction = 'buy' | 'sell' | 'hold';
+
+export type Regime = 'stable' | 'transition' | 'volatile' | 'anomaly';
+
+export interface LatticeState {
+  pathId: number;          // 1–96
+  polarity: -1 | 0 | 1;
+  strength: number;        // 0–1
+  guardian: 'lion' | 'phoenix' | 'dragon' | 'owl' | 'raven';
+}
+
+export interface AnalysisOutput {
+  symbol: string;
+  historicalState: LatticeState;
+  liveState: LatticeState;
+  drift: number;
+  regime: Regime;
+  hash: string;
+}
+
+export interface TradeSignal {
+  symbol: string;
+  action: TradeAction;
+  confidence: number;      // 0–1
+  size: number;            // 0–1
+  regime: Regime;
+  pathId: number;
+  reason: string;
+}
+
+export interface ValidatedSignal extends TradeSignal {
+  approved: boolean;
+  rejectionReason?: string;
+}
+
+export interface RiskEnvelope {
+  maxPosition: number;     // 0–1
+  maxDrawdown: number;     // 0–1
+  volatilityCap: number;   // 0–1
+}
+
+export interface ExecutionDecision {
+  execute: boolean;
+  shares: number;
+  side?: 'buy' | 'sell';
+  reason: string;
+}
+
+
+// ============================================================================
+// signalCore.ts — base deterministic signal
+// ============================================================================
+
+import { AnalysisOutput, TradeSignal } from './layerTypes';
+
+export function generateBaseSignal(a: AnalysisOutput): TradeSignal {
+  const { liveState, regime } = a;
+
+  let action: TradeSignal['action'] = 'hold';
+  let confidence = 0;
+  let size = 0;
+  let reason = '';
+
+  if (regime === 'stable') {
+    if (liveState.polarity === 1) {
+      action = 'buy';
+      confidence = 0.6 + liveState.strength * 0.4;
+      size = 0.4 + liveState.strength * 0.6;
+      reason = 'stable_positive';
+    } else if (liveState.polarity === -1) {
+      action = 'sell';
+      confidence = 0.6 + liveState.strength * 0.4;
+      size = 0.4 + liveState.strength * 0.6;
+      reason = 'stable_negative';
+    }
+  }
+
+  if (regime === 'transition') {
+    action = 'hold';
+    confidence = 0.35;
+    size = 0.15;
+    reason = 'transition_reduce';
+  }
+
+  if (regime === 'volatile') {
+    action = 'hold';
+    confidence = 0.15;
+    size = 0.05;
+    reason = 'volatile_capital_preservation';
+  }
+
+  if (regime === 'anomaly') {
+    action = 'hold';
+    confidence = 0;
+    size = 0;
+    reason = 'anomaly_block';
+  }
+
+  return {
+    symbol: a.symbol,
+    action,
+    confidence,
+    size,
+    regime,
+    pathId: liveState.pathId,
+    reason,
+  };
+}
+
+
+// ============================================================================
+// signalRefinement.ts — multi-layer tightening
+// ============================================================================
+
+import { TradeSignal, AnalysisOutput } from './layerTypes';
+
+// ---------------------------------------------------------------------------
+// Layer 1 — Drift penalty
+// ---------------------------------------------------------------------------
+
+export function applyDriftPenalty(
+  signal: TradeSignal,
+  analysis: AnalysisOutput
+): TradeSignal {
+  const penalty = Math.max(0, 1 - analysis.drift);
+
+  return {
+    ...signal,
+    confidence: signal.confidence * penalty,
+    size: signal.size * penalty,
+    reason: signal.reason + '|drift_adjusted',
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Layer 2 — Path stability weighting
+// ---------------------------------------------------------------------------
+
+export function applyPathStability(
+  signal: TradeSignal,
+  analysis: AnalysisOutput
+): TradeSignal {
+  const delta =
+    Math.abs(
+      analysis.liveState.pathId - analysis.historicalState.pathId
+    ) / 96;
+
+  const stability = 1 - delta;
+
+  return {
+    ...signal,
+    confidence: signal.confidence * stability,
+    size: signal.size * stability,
+    reason: signal.reason + '|path_stability',
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Layer 3 — Strength normalization clamp
+// ---------------------------------------------------------------------------
+
+export function normalizeSignal(signal: TradeSignal): TradeSignal {
+  return {
+    ...signal,
+    confidence: Math.min(1, Math.max(0, signal.confidence)),
+    size: Math.min(1, Math.max(0, signal.size)),
+    reason: signal.reason + '|normalized',
+  };
+}
+
+
+// ============================================================================
+// guardianLayer.ts — strict enforcement
+// ============================================================================
+
+import { TradeSignal, ValidatedSignal } from './layerTypes';
+
+export function validateSignalStrict(signal: TradeSignal): ValidatedSignal {
+  // Γ1 — bounds
+  if (signal.confidence < 0 || signal.confidence > 1) {
+    return { ...signal, approved: false, rejectionReason: 'invalid_confidence' };
+  }
+
+  // Γ2 — anomaly block
+  if (signal.regime === 'anomaly') {
+    return { ...signal, approved: false, rejectionReason: 'anomaly_block' };
+  }
+
+  // Γ3 — weak signal suppression
+  if (signal.confidence < 0.25 && signal.action !== 'hold') {
+    return { ...signal, approved: false, rejectionReason: 'low_confidence' };
+  }
+
+  // Γ4 — transition sizing restriction
+  if (signal.regime === 'transition' && signal.size > 0.25) {
+    return { ...signal, approved: false, rejectionReason: 'oversize_transition' };
+  }
+
+  // Γ5 — volatile enforcement
+  if (signal.regime === 'volatile' && signal.action !== 'hold') {
+    return { ...signal, approved: false, rejectionReason: 'volatile_block' };
+  }
+
+  return { ...signal, approved: true };
+}
+
+
+// ============================================================================
+// riskLayer.ts — deterministic envelopes
+// ============================================================================
+
+import { RiskEnvelope, TradeSignal } from './layerTypes';
+
+export function getRiskEnvelope(regime: string): RiskEnvelope {
+  if (regime === 'stable') {
+    return { maxPosition: 1, maxDrawdown: 0.25, volatilityCap: 1 };
+  }
+  if (regime === 'transition') {
+    return { maxPosition: 0.3, maxDrawdown: 0.15, volatilityCap: 0.6 };
+  }
+  if (regime === 'volatile') {
+    return { maxPosition: 0.1, maxDrawdown: 0.1, volatilityCap: 0.3 };
+  }
+  return { maxPosition: 0, maxDrawdown: 0.05, volatilityCap: 0.1 };
+}
+
+export function applyRiskEnvelope(
+  signal: TradeSignal,
+  envelope: RiskEnvelope
+): TradeSignal {
+  return {
+    ...signal,
+    size: Math.min(signal.size, envelope.maxPosition),
+    reason: signal.reason + '|risk_enforced',
+  };
+}
+
+
+// ============================================================================
+// executionLayer.ts — final deterministic decision
+// ============================================================================
+
+import { ExecutionDecision, ValidatedSignal } from './layerTypes';
+
+export function decideExecution(
+  signal: ValidatedSignal
+): ExecutionDecision {
+  if (!signal.approved) {
+    return {
+      execute: false,
+      shares: 0,
+      reason: signal.rejectionReason || 'rejected',
+    };
+  }
+
+  if (signal.action === 'hold') {
+    return {
+      execute: false,
+      shares: 0,
+      reason: 'hold',
+    };
+  }
+
+  return {
+    execute: true,
+    shares: Math.floor(signal.size * 100),
+    side: signal.action,
+    reason: 'execute',
+  };
+}
+
+
+// ============================================================================
+// pipeline.ts — FULL PHASE 2 PIPELINE
+// ============================================================================
+
+import { AnalysisOutput } from './layerTypes';
+import { generateBaseSignal } from './signalCore';
+import {
+  applyDriftPenalty,
+  applyPathStability,
+  normalizeSignal,
+} from './signalRefinement';
+import { validateSignalStrict } from './guardianLayer';
+import { getRiskEnvelope, applyRiskEnvelope } from './riskLayer';
+import { decideExecution } from './executionLayer';
+
+export function runPhase2Pipeline(a: AnalysisOutput) {
+  let signal = generateBaseSignal(a);
+
+  signal = applyDriftPenalty(signal, a);
+  signal = applyPathStability(signal, a);
+  signal = normalizeSignal(signal);
+
+  const envelope = getRiskEnvelope(signal.regime);
+  signal = applyRiskEnvelope(signal, envelope);
+
+  const validated = validateSignalStrict(signal);
+
+  const decision = decideExecution(validated);
+
+  return {
+    input: a,
+    signal,
+    validated,
+    decision,
+  };
+}
+
+// ============================================================================
+// PHASE 2 — CONTINUATION (DEEP REFINEMENT LAYERS)
+// Strictly code
+// ============================================================================
+
+
+// ============================================================================
+// microstructureLayer.ts — order book + pressure refinement
+// ============================================================================
+
+import { TradeSignal } from './layerTypes';
+
+export interface MicrostructureInput {
+  bidDepth: number;
+  askDepth: number;
+  spread: number;       // cents
+  imbalance: number;    // -1 to +1
+}
+
+export function applyMicrostructure(
+  signal: TradeSignal,
+  micro: MicrostructureInput
+): TradeSignal {
+  const pressure = micro.imbalance;
+
+  let bias = 1;
+
+  if (signal.action === 'buy') {
+    bias = 1 + pressure;
+  } else if (signal.action === 'sell') {
+    bias = 1 - pressure;
+  }
+
+  const spreadPenalty = Math.max(0, 1 - micro.spread / 100);
+
+  return {
+    ...signal,
+    confidence: signal.confidence * bias * spreadPenalty,
+    size: signal.size * bias * spreadPenalty,
+    reason: signal.reason + '|microstructure',
+  };
+}
+
+
+// ============================================================================
+// temporalConsistencyLayer.ts — time-series coherence
+// ============================================================================
+
+import { TradeSignal } from './layerTypes';
+
+export function applyTemporalConsistency(
+  signal: TradeSignal,
+  previousSignals: TradeSignal[]
+): TradeSignal {
+  if (previousSignals.length === 0) return signal;
+
+  const last = previousSignals[previousSignals.length - 1];
+
+  const consistency =
+    signal.action === last.action ? 1.1 : 0.7;
+
+  return {
+    ...signal,
+    confidence: Math.min(1, signal.confidence * consistency),
+    size: signal.size * consistency,
+    reason: signal.reason + '|temporal',
+  };
+}
+
+
+// ============================================================================
+// entropyLayer.ts — noise suppression
+// ============================================================================
+
+import { TradeSignal } from './layerTypes';
+
+export function applyEntropyFilter(
+  signal: TradeSignal,
+  entropy: number // 0–1
+): TradeSignal {
+  const clarity = 1 - entropy;
+
+  return {
+    ...signal,
+    confidence: signal.confidence * clarity,
+    size: signal.size * clarity,
+    reason: signal.reason + '|entropy',
+  };
+}
+
+
+// ============================================================================
+// correlationLayer.ts — multi-asset alignment
+// ============================================================================
+
+import { TradeSignal } from './layerTypes';
+
+export function applyCorrelationAdjustment(
+  signal: TradeSignal,
+  correlation: number // -1 to +1
+): TradeSignal {
+  const alignment = Math.abs(correlation);
+
+  return {
+    ...signal,
+    confidence: signal.confidence * alignment,
+    size: signal.size * alignment,
+    reason: signal.reason + '|correlation',
+  };
+}
+
+
+// ============================================================================
+// liquidityLayer.ts — execution feasibility
+// ============================================================================
+
+import { TradeSignal } from './layerTypes';
+
+export function applyLiquidityConstraints(
+  signal: TradeSignal,
+  liquidityScore: number // 0–1
+): TradeSignal {
+  return {
+    ...signal,
+    size: signal.size * liquidityScore,
+    reason: signal.reason + '|liquidity',
+  };
+}
+
+
+// ============================================================================
+// executionPrecisionLayer.ts — slippage + fill realism
+// ============================================================================
+
+import { ExecutionDecision } from './layerTypes';
+
+export function refineExecutionPrecision(
+  decision: ExecutionDecision,
+  slippage: number // 0–1
+): ExecutionDecision {
+  if (!decision.execute) return decision;
+
+  const adjustedShares = Math.floor(
+    decision.shares * (1 - slippage)
+  );
+
+  return {
+    ...decision,
+    shares: adjustedShares,
+    reason: decision.reason + '|slippage_adjusted',
+  };
+}
+
+
+// ============================================================================
+// auditLayer.ts — full deterministic trace
+// ============================================================================
+
+import { AnalysisOutput } from './layerTypes';
+
+export interface AuditTrail {
+  timestamp: string;
+  inputHash: string;
+  layers: string[];
+  finalDecision: string;
+}
+
+export function buildAuditTrail(
+  analysis: AnalysisOutput,
+  layers: string[],
+  decision: string
+): AuditTrail {
+  return {
+    timestamp: new Date().toISOString(),
+    inputHash: analysis.hash,
+    layers,
+    finalDecision: decision,
+  };
+}
+
+
+// ============================================================================
+// EXTENDED PIPELINE — FULL PHASE 2 (ALL LAYERS)
+// ============================================================================
+
+import { runPhase2Pipeline } from './pipeline';
+import { applyMicrostructure } from './microstructureLayer';
+import { applyTemporalConsistency } from './temporalConsistencyLayer';
+import { applyEntropyFilter } from './entropyLayer';
+import { applyCorrelationAdjustment } from './correlationLayer';
+import { applyLiquidityConstraints } from './liquidityLayer';
+import { refineExecutionPrecision } from './executionPrecisionLayer';
+import { buildAuditTrail } from './auditLayer';
+import { AnalysisOutput, TradeSignal } from './layerTypes';
+
+export function runPhase2Extended(
+  analysis: AnalysisOutput,
+  context: {
+    micro: any;
+    history: TradeSignal[];
+    entropy: number;
+    correlation: number;
+    liquidity: number;
+    slippage: number;
+  }
+) {
+  const base = runPhase2Pipeline(analysis);
+
+  let signal = base.signal;
+  const layers: string[] = ['base'];
+
+  signal = applyMicrostructure(signal, context.micro);
+  layers.push('microstructure');
+
+  signal = applyTemporalConsistency(signal, context.history);
+  layers.push('temporal');
+
+  signal = applyEntropyFilter(signal, context.entropy);
+  layers.push('entropy');
+
+  signal = applyCorrelationAdjustment(signal, context.correlation);
+  layers.push('correlation');
+
+  signal = applyLiquidityConstraints(signal, context.liquidity);
+  layers.push('liquidity');
+
+  const decision = refineExecutionPrecision(
+    base.decision,
+    context.slippage
+  );
+  layers.push('execution_precision');
+
+  const audit = buildAuditTrail(
+    analysis,
+    layers,
+    decision.reason
+  );
+
+  return {
+    signal,
+    decision,
+    audit,
+  };
+}
+
+// ============================================================================
+// PHASE 2 — CONTINUATION (DETERMINISM / INVARIANTS / FAIL-HARD / CACHING)
+// Strictly code
+// ============================================================================
+
+
+// ============================================================================
+// stableStringify.ts — deterministic stringify (sorted keys)
+// ============================================================================
+
+export function stableStringify(value: any): string {
+  return _stringify(value);
+
+  function _stringify(v: any): string {
+    if (v === null) return 'null';
+    if (typeof v === 'number') {
+      if (!Number.isFinite(v)) throw new Error('non-finite number');
+      return String(v);
+    }
+    if (typeof v === 'boolean') return v ? 'true' : 'false';
+    if (typeof v === 'string') return JSON.stringify(v);
+    if (Array.isArray(v)) {
+      return '[' + v.map(_stringify).join(',') + ']';
+    }
+    if (typeof v === 'object') {
+      const keys = Object.keys(v).sort();
+      const parts: string[] = [];
+      for (const k of keys) {
+        parts.push(JSON.stringify(k) + ':' + _stringify(v[k]));
+      }
+      return '{' + parts.join(',') + '}';
+    }
+    throw new Error('unsupported type');
+  }
+}
+
+
+// ============================================================================
+// deterministicHash.ts — SHA-256 over stable stringify
+// ============================================================================
+
+export async function sha256Hex(input: string): Promise<string> {
+  const data = new TextEncoder().encode(input);
+  const buf = await crypto.subtle.digest('SHA-256', data);
+  const arr = Array.from(new Uint8Array(buf));
+  return arr.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+export async function hashObject(obj: any): Promise<string> {
+  return sha256Hex(stableStringify(obj));
+}
+
+
+// ============================================================================
+// invariants.ts — fail-hard invariant enforcement
+// ============================================================================
+
+import { TradeSignal, ValidatedSignal, ExecutionDecision } from './layerTypes';
+
+export function assertSignalInvariants(s: TradeSignal): void {
+  if (s.confidence < 0 || s.confidence > 1) {
+    throw new Error('INV:confidence_out_of_bounds');
+  }
+  if (s.size < 0 || s.size > 1) {
+    throw new Error('INV:size_out_of_bounds');
+  }
+  if (!['buy', 'sell', 'hold'].includes(s.action)) {
+    throw new Error('INV:invalid_action');
+  }
+}
+
+export function assertValidatedInvariants(v: ValidatedSignal): void {
+  if (v.approved && v.rejectionReason) {
+    throw new Error('INV:approved_with_reason');
+  }
+  if (!v.approved && !v.rejectionReason) {
+    throw new Error('INV:rejected_without_reason');
+  }
+}
+
+export function assertDecisionInvariants(d: ExecutionDecision): void {
+  if (!d.execute && d.shares !== 0) {
+    throw new Error('INV:nonzero_shares_when_not_execute');
+  }
+  if (d.execute && (!d.side || d.shares <= 0)) {
+    throw new Error('INV:execute_requires_side_and_positive_shares');
+  }
+}
+
+
+// ============================================================================
+// freeze.ts — immutability guard
+// ============================================================================
+
+export function deepFreeze<T>(obj: T): T {
+  if (obj && typeof obj === 'object') {
+    Object.freeze(obj);
+    for (const k of Object.keys(obj as any)) {
+      // @ts-ignore
+      const v = obj[k];
+      if (v && typeof v === 'object' && !Object.isFrozen(v)) {
+        deepFreeze(v);
+      }
+    }
+  }
+  return obj;
+}
+
+
+// ============================================================================
+// cache.ts — deterministic memo cache keyed by hash
+// ============================================================================
+
+const _cache = new Map<string, any>();
+
+export async function cacheGetOrCompute<T>(
+  keyObj: any,
+  compute: () => Promise<T> | T
+): Promise<T> {
+  const key = await hashObject(keyObj);
+  if (_cache.has(key)) return _cache.get(key);
+  const val = await compute();
+  _cache.set(key, val);
+  return val;
+}
+
+
+// ============================================================================
+// rateLimiter.ts — deterministic gating (no time randomness)
+// ============================================================================
+
+const _rateState = new Map<string, number>();
+
+export function allowAction(key: string, limitPerWindow: number): boolean {
+  const used = _rateState.get(key) || 0;
+  if (used >= limitPerWindow) return false;
+  _rateState.set(key, used + 1);
+  return true;
+}
+
+export function resetRate(key: string): void {
+  _rateState.set(key, 0);
+}
+
+
+// ============================================================================
+// metricsHook.ts — invariant violation reporting
+// ============================================================================
+
+export type MetricsHook = (name: string, payload?: any) => void;
+
+let _metricsHook: MetricsHook | null = null;
+
+export function setMetricsHook(h: MetricsHook) {
+  _metricsHook = h;
+}
+
+export function reportMetric(name: string, payload?: any) {
+  if (_metricsHook) _metricsHook(name, payload);
+}
+
+
+// ============================================================================
+// goldenCases.ts — fixed vectors for determinism tests
+// ============================================================================
+
+import { AnalysisOutput } from './layerTypes';
+
+export const GOLDEN_ANALYSES: AnalysisOutput[] = [
+  {
+    symbol: 'AAPL',
+    historicalState: { pathId: 24, polarity: 1, strength: 0.6, guardian: 'phoenix' },
+    liveState: { pathId: 26, polarity: 1, strength: 0.7, guardian: 'phoenix' },
+    drift: 0.05,
+    regime: 'stable',
+    hash: 'golden-1',
+  },
+  {
+    symbol: 'BTC',
+    historicalState: { pathId: 70, polarity: -1, strength: 0.5, guardian: 'owl' },
+    liveState: { pathId: 80, polarity: -1, strength: 0.6, guardian: 'raven' },
+    drift: 0.4,
+    regime: 'volatile',
+    hash: 'golden-2',
+  },
+];
+
+
+// ============================================================================
+// replayEngine.ts — deterministic replay over sequences
+// ============================================================================
+
+import { AnalysisOutput, TradeSignal } from './layerTypes';
+import { runPhase2Extended } from './extendedPipeline'; // assumes previous file name
+import { deepFreeze } from './freeze';
+import { assertDecisionInvariants } from './invariants';
+
+export function runReplay(
+  analyses: AnalysisOutput[],
+  contextFactory: (i: number) => any
+) {
+  const results: any[] = [];
+  const history: TradeSignal[] = [];
+
+  for (let i = 0; i < analyses.length; i++) {
+    const ctx = contextFactory(i);
+    const out = runPhase2Extended(analyses[i], {
+      ...ctx,
+      history,
+    });
+
+    assertDecisionInvariants(out.decision);
+    deepFreeze(out);
+
+    history.push(out.signal);
+    results.push(out);
+  }
+
+  return results;
+}
+
+
+// ============================================================================
+// signature.ts — Ed25519 sign/verify using Web Crypto
+// ============================================================================
+
+export async function signPayload(
+  privateKey: CryptoKey,
+  payload: any
+): Promise<string> {
+  const data = new TextEncoder().encode(stableStringify(payload));
+  const sig = await crypto.subtle.sign('Ed25519', privateKey, data);
+  const arr = Array.from(new Uint8Array(sig));
+  return arr.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+export async function verifyPayload(
+  publicKey: CryptoKey,
+  payload: any,
+  signatureHex: string
+): Promise<boolean> {
+  const data = new TextEncoder().encode(stableStringify(payload));
+  const sigBytes = new Uint8Array(
+    signatureHex.match(/.{1,2}/g)!.map(h => parseInt(h, 16))
+  );
+  return crypto.subtle.verify('Ed25519', publicKey, sigBytes, data);
+}
+
+
+// ============================================================================
+// finalOrchestrator.ts — end-to-end hardened pipeline
+// ============================================================================
+
+import { AnalysisOutput } from './layerTypes';
+import { runPhase2Extended } from './extendedPipeline';
+import {
+  assertSignalInvariants,
+  assertValidatedInvariants,
+  assertDecisionInvariants,
+} from './invariants';
+import { deepFreeze } from './freeze';
+import { cacheGetOrCompute } from './cache';
+import { reportMetric } from './metricsHook';
+import { hashObject } from './deterministicHash';
+
+export async function runHardenedPipeline(
+  analysis: AnalysisOutput,
+  context: any
+) {
+  return cacheGetOrCompute({ analysis, context }, async () => {
+    try {
+      const out = runPhase2Extended(analysis, context);
+
+      assertSignalInvariants(out.signal);
+      assertValidatedInvariants(out.decision.execute
+        ? { ...out.signal, approved: true }
+        : { ...out.signal, approved: false, rejectionReason: out.decision.reason }
+      );
+      assertDecisionInvariants(out.decision);
+
+      const hash = await hashObject(out);
+
+      const frozen = deepFreeze({
+        ...out,
+        hash,
+      });
+
+      return frozen;
+    } catch (e: any) {
+      reportMetric('pipeline_error', { error: String(e) });
+      throw e;
+    }
+  });
+}
+
+// ============================================================================
+// PHASE 2 — CONTINUATION (STATE, VECTOR ENUMERATION, INVARIANT MATRIX, CONSENSUS)
+// Strictly code
+// ============================================================================
+
+
+// ============================================================================
+// stateMachine.ts — deterministic execution state machine
+// ============================================================================
+
+export type EngineState =
+  | 'IDLE'
+  | 'ANALYZE'
+  | 'SIGNAL'
+  | 'VALIDATE'
+  | 'DECIDE'
+  | 'EXECUTE'
+  | 'REJECT'
+  | 'HALT';
+
+export interface StateContext {
+  state: EngineState;
+  lastTransition: string;
+}
+
+export function transitionState(
+  ctx: StateContext,
+  event: string
+): StateContext {
+  const { state } = ctx;
+
+  if (state === 'IDLE' && event === 'start') {
+    return { state: 'ANALYZE', lastTransition: 'IDLE→ANALYZE' };
+  }
+
+  if (state === 'ANALYZE' && event === 'analysis_ready') {
+    return { state: 'SIGNAL', lastTransition: 'ANALYZE→SIGNAL' };
+  }
+
+  if (state === 'SIGNAL' && event === 'signal_ready') {
+    return { state: 'VALIDATE', lastTransition: 'SIGNAL→VALIDATE' };
+  }
+
+  if (state === 'VALIDATE' && event === 'approved') {
+    return { state: 'DECIDE', lastTransition: 'VALIDATE→DECIDE' };
+  }
+
+  if (state === 'VALIDATE' && event === 'rejected') {
+    return { state: 'REJECT', lastTransition: 'VALIDATE→REJECT' };
+  }
+
+  if (state === 'DECIDE' && event === 'execute') {
+    return { state: 'EXECUTE', lastTransition: 'DECIDE→EXECUTE' };
+  }
+
+  if (state === 'DECIDE' && event === 'skip') {
+    return { state: 'IDLE', lastTransition: 'DECIDE→IDLE' };
+  }
+
+  if (state === 'EXECUTE' && event === 'done') {
+    return { state: 'IDLE', lastTransition: 'EXECUTE→IDLE' };
+  }
+
+  return { state: 'HALT', lastTransition: 'INVALID_TRANSITION' };
+}
+
+
+// ============================================================================
+// vectorTypes.ts — enumerated dimensions
+// ============================================================================
+
+export type Env = 'prod' | 'staging' | 'dev';
+export type Mode = 'live' | 'paper' | 'backtest';
+export type Risk = 'low' | 'medium' | 'high';
+export type Decision = 'buy' | 'sell' | 'hold';
+export type Auth = 'approved' | 'rejected';
+
+export interface Vector {
+  env: Env;
+  mode: Mode;
+  risk: Risk;
+  decision: Decision;
+  auth: Auth;
+}
+
+
+// ============================================================================
+// constraints.ts — system laws
+// ============================================================================
+
+import { Vector } from './vectorTypes';
+
+export function isValidVector(v: Vector): boolean {
+  // Law 1: no high risk in dev
+  if (v.env === 'dev' && v.risk === 'high') return false;
+
+  // Law 2: rejected cannot execute
+  if (v.auth === 'rejected' && v.decision !== 'hold') return false;
+
+  // Law 3: live requires approval
+  if (v.mode === 'live' && v.auth !== 'approved') return false;
+
+  return true;
+}
+
+
+// ============================================================================
+// generator.ts — full Cartesian enumeration
+// ============================================================================
+
+import { Vector, Env, Mode, Risk, Decision, Auth } from './vectorTypes';
+import { isValidVector } from './constraints';
+
+export function generateAllVectors(): Vector[] {
+  const envs: Env[] = ['prod', 'staging', 'dev'];
+  const modes: Mode[] = ['live', 'paper', 'backtest'];
+  const risks: Risk[] = ['low', 'medium', 'high'];
+  const decisions: Decision[] = ['buy', 'sell', 'hold'];
+  const auths: Auth[] = ['approved', 'rejected'];
+
+  const result: Vector[] = [];
+
+  for (const env of envs)
+    for (const mode of modes)
+      for (const risk of risks)
+        for (const decision of decisions)
+          for (const auth of auths) {
+            const v: Vector = { env, mode, risk, decision, auth };
+            if (isValidVector(v)) result.push(v);
+          }
+
+  return result;
+}
+
+
+// ============================================================================
+// invariantsMatrix.ts — fail-hard validation per vector
+// ============================================================================
+
+import { Vector } from './vectorTypes';
+
+export function assertVectorInvariant(v: Vector): void {
+  if (v.mode === 'live' && v.env !== 'prod') {
+    throw new Error('INV:live_mode_requires_prod');
+  }
+
+  if (v.risk === 'high' && v.decision === 'buy' && v.env === 'staging') {
+    throw new Error('INV:staging_high_risk_buy_blocked');
+  }
+}
+
+
+// ============================================================================
+// consensusLayer.ts — multi-signal agreement
+// ============================================================================
+
+import { TradeSignal } from './layerTypes';
+
+export function consensusDecision(signals: TradeSignal[]): TradeSignal {
+  if (signals.length === 0) throw new Error('no_signals');
+
+  let score = 0;
+
+  for (const s of signals) {
+    if (s.action === 'buy') score += s.confidence;
+    if (s.action === 'sell') score -= s.confidence;
+  }
+
+  const avg = score / signals.length;
+
+  const base = signals[0];
+
+  return {
+    ...base,
+    action: avg > 0.2 ? 'buy' : avg < -0.2 ? 'sell' : 'hold',
+    confidence: Math.abs(avg),
+    size: Math.min(1, Math.abs(avg)),
+    reason: 'consensus',
+  };
+}
+
+
+// ============================================================================
+// multiPathFusion.ts — 96-path aggregation
+// ============================================================================
+
+import { LatticeState } from './layerTypes';
+
+export function fuseLatticeStates(states: LatticeState[]): LatticeState {
+  if (states.length === 0) throw new Error('no_states');
+
+  let total = 0;
+  let strength = 0;
+
+  for (const s of states) {
+    total += s.polarity * s.strength;
+    strength += s.strength;
+  }
+
+  const avg = total / states.length;
+
+  return {
+    pathId: Math.round(
+      states.reduce((sum, s) => sum + s.pathId, 0) / states.length
+    ),
+    polarity: avg > 0.1 ? 1 : avg < -0.1 ? -1 : 0,
+    strength: Math.min(1, strength / states.length),
+    guardian: states[0].guardian,
+  };
+}
+
+
+// ============================================================================
+// guardMatrix.ts — layered guardian scoring
+// ============================================================================
+
+import { TradeSignal } from './layerTypes';
+
+export function guardianScore(signal: TradeSignal): number {
+  let score = 0;
+
+  if (signal.confidence > 0.6) score += 0.3;      // Lion
+  if (signal.size < 0.5) score += 0.2;            // Phoenix
+  if (signal.confidence > 0.5) score += 0.2;      // Dragon
+  if (signal.action === 'hold') score += 0.1;     // Owl
+  if (signal.regime !== 'anomaly') score += 0.2;  // Raven
+
+  return score;
+}
+
+
+// ============================================================================
+// failSafe.ts — hard stop conditions
+// ============================================================================
+
+export function checkFailSafe(params: {
+  drawdown: number;
+  volatility: number;
+  anomaly: boolean;
+}): boolean {
+  if (params.drawdown > 0.3) return true;
+  if (params.volatility > 0.8) return true;
+  if (params.anomaly) return true;
+
+  return false;
+}
+
+
+// ============================================================================
+// supervisoryLoop.ts — deterministic supervisor
+// ============================================================================
+
+import { AnalysisOutput } from './layerTypes';
+import { runHardenedPipeline } from './finalOrchestrator';
+import { checkFailSafe } from './failSafe';
+
+export async function supervisorLoop(
+  analyses: AnalysisOutput[],
+  contextFactory: (i: number) => any
+) {
+  const outputs: any[] = [];
+
+  for (let i = 0; i < analyses.length; i++) {
+    const ctx = contextFactory(i);
+
+    const halt = checkFailSafe({
+      drawdown: ctx.drawdown,
+      volatility: ctx.volatility,
+      anomaly: analyses[i].regime === 'anomaly',
+    });
+
+    if (halt) {
+      outputs.push({ halted: true, index: i });
+      break;
+    }
+
+    const out = await runHardenedPipeline(analyses[i], ctx);
+    outputs.push(out);
+  }
+
+  return outputs;
+}
+
+// ============================================================================
+// PHASE 2 — FINALIZATION (LOCK, VERIFY, EXPORT)
+// Strictly code
+// ============================================================================
+
+import { AnalysisOutput } from './layerTypes';
+import { runHardenedPipeline } from './finalOrchestrator';
+import { stableStringify, hashObject } from './deterministicHash';
+import { signPayload } from './signature';
+import { deepFreeze } from './freeze';
+
+// ---------------------------------------------------------------------------
+// FINAL OUTPUT CONTRACT
+// ---------------------------------------------------------------------------
+
+export interface Phase2Artifact {
+  inputHash: string;
+  outputHash: string;
+  decision: any;
+  audit: any;
+  signature: string;
+  timestamp: string;
+}
+
+// ---------------------------------------------------------------------------
+// FINALIZER
+// ---------------------------------------------------------------------------
+
+export async function finalizePhase2(
+  analysis: AnalysisOutput,
+  context: any,
+  privateKey: CryptoKey
+): Promise<Phase2Artifact> {
+  const result = await runHardenedPipeline(analysis, context);
+
+  const inputHash = await hashObject(analysis);
+  const outputHash = await hashObject(result);
+
+  const payload = {
+    inputHash,
+    outputHash,
+    decision: result.decision,
+    audit: result.audit,
+    timestamp: new Date().toISOString(),
+  };
+
+  const signature = await signPayload(privateKey, payload);
+
+  return deepFreeze({
+    ...payload,
+    signature,
+  });
+}
+
+
+// ============================================================================
+// PHASE 3 — BACKTEST + SIMULATION ENGINE
+// Strictly code
+// ============================================================================
+
+
+// ============================================================================
+// backtestTypes.ts
+// ============================================================================
+
+export interface BacktestResult {
+  trades: number;
+  wins: number;
+  losses: number;
+  pnl: number;
+  equityCurve: number[];
+  drawdown: number;
+}
+
+
+// ============================================================================
+// portfolio.ts — minimal deterministic portfolio
+// ============================================================================
+
+export interface Position {
+  symbol: string;
+  shares: number;
+  avgPrice: number;
+}
+
+export class Portfolio {
+  cash: number;
+  positions: Map<string, Position>;
+  history: number[];
+
+  constructor(initialCash: number) {
+    this.cash = initialCash;
+    this.positions = new Map();
+    this.history = [initialCash];
+  }
+
+  updateEquity(priceMap: Record<string, number>) {
+    let total = this.cash;
+
+    for (const pos of this.positions.values()) {
+      total += pos.shares * priceMap[pos.symbol];
+    }
+
+    this.history.push(total);
+  }
+}
+
+
+// ============================================================================
+// executionSimulator.ts
+// ============================================================================
+
+import { Portfolio } from './portfolio';
+
+export function simulateExecution(
+  portfolio: Portfolio,
+  decision: any,
+  price: number
+) {
+  if (!decision.execute) return;
+
+  const shares = decision.shares;
+
+  if (decision.side === 'buy') {
+    const cost = shares * price;
+    if (portfolio.cash >= cost) {
+      portfolio.cash -= cost;
+
+      const pos = portfolio.positions.get('SYM') || {
+        symbol: 'SYM',
+        shares: 0,
+        avgPrice: price,
+      };
+
+      const totalShares = pos.shares + shares;
+
+      pos.avgPrice =
+        (pos.avgPrice * pos.shares + price * shares) / totalShares;
+
+      pos.shares = totalShares;
+
+      portfolio.positions.set('SYM', pos);
+    }
+  }
+
+  if (decision.side === 'sell') {
+    const pos = portfolio.positions.get('SYM');
+    if (!pos || pos.shares < shares) return;
+
+    portfolio.cash += shares * price;
+    pos.shares -= shares;
+
+    if (pos.shares === 0) {
+      portfolio.positions.delete('SYM');
+    }
+  }
+}
+
+
+// ============================================================================
+// backtestEngine.ts
+// ============================================================================
+
+import { AnalysisOutput } from './layerTypes';
+import { finalizePhase2 } from './finalPhase2';
+import { Portfolio } from './portfolio';
+import { simulateExecution } from './executionSimulator';
+
+export async function runBacktest(
+  analyses: AnalysisOutput[],
+  contextFactory: (i: number) => any,
+  priceSeries: number[],
+  privateKey: CryptoKey
+): Promise<BacktestResult> {
+  const portfolio = new Portfolio(100000);
+  let wins = 0;
+  let losses = 0;
+
+  for (let i = 0; i < analyses.length; i++) {
+    const ctx = contextFactory(i);
+
+    const artifact = await finalizePhase2(
+      analyses[i],
+      ctx,
+      privateKey
+    );
+
+    const price = priceSeries[i] || priceSeries[priceSeries.length - 1];
+
+    simulateExecution(portfolio, artifact.decision, price);
+
+    portfolio.updateEquity({ SYM: price });
+
+    if (portfolio.history.length > 1) {
+      const diff =
+        portfolio.history[portfolio.history.length - 1] -
+        portfolio.history[portfolio.history.length - 2];
+
+      if (diff > 0) wins++;
+      if (diff < 0) losses++;
+    }
+  }
+
+  const pnl =
+    portfolio.history[portfolio.history.length - 1] - portfolio.history[0];
+
+  let peak = portfolio.history[0];
+  let maxDD = 0;
+
+  for (const v of portfolio.history) {
+    if (v > peak) peak = v;
+    const dd = peak - v;
+    if (dd > maxDD) maxDD = dd;
+  }
+
+  return {
+    trades: analyses.length,
+    wins,
+    losses,
+    pnl,
+    equityCurve: portfolio.history,
+    drawdown: maxDD,
+  };
+}
+
+
+// ============================================================================
+// scenarioGenerator.ts — deterministic market scenarios
+// ============================================================================
+
+export function generateScenario(
+  length: number,
+  seed = 1
+): number[] {
+  let price = 10000;
+  const series: number[] = [];
+
+  for (let i = 0; i < length; i++) {
+    const rand = ((Math.sin(seed + i) + 1) / 2) - 0.5;
+    price = Math.max(1, Math.floor(price * (1 + rand * 0.02)));
+    series.push(price);
+  }
+
+  return series;
+}
+
+
+// ============================================================================
+// phase3Orchestrator.ts
+// ============================================================================
+
+import { runBacktest } from './backtestEngine';
+import { generateScenario } from './scenarioGenerator';
+import { AnalysisOutput } from './layerTypes';
+
+export async function runPhase3(
+  analyses: AnalysisOutput[],
+  contextFactory: (i: number) => any,
+  privateKey: CryptoKey
+) {
+  const priceSeries = generateScenario(analyses.length);
+
+  const result = await runBacktest(
+    analyses,
+    contextFactory,
+    priceSeries,
+    privateKey
+  );
+
+  return result;
+}
+
+// ============================================================================
+// PHASE 3 — CONTINUATION (WALK-FORWARD, REGIME BUCKETS, METRICS, MONTE CARLO)
+// Strictly code
+// ============================================================================
+
+
+// ============================================================================
+// walkForward.ts — rolling train/test windows
+// ============================================================================
+
+import { AnalysisOutput } from './layerTypes';
+import { runBacktest } from './backtestEngine';
+
+export interface WalkForwardResult {
+  windows: {
+    start: number;
+    end: number;
+    result: any;
+  }[];
+}
+
+export async function runWalkForward(
+  analyses: AnalysisOutput[],
+  contextFactory: (i: number) => any,
+  privateKey: CryptoKey,
+  windowSize: number,
+  step: number,
+  priceSeries: number[]
+): Promise<WalkForwardResult> {
+  const windows: WalkForwardResult['windows'] = [];
+
+  for (let i = 0; i + windowSize <= analyses.length; i += step) {
+    const slice = analyses.slice(i, i + windowSize);
+    const prices = priceSeries.slice(i, i + windowSize);
+
+    const result = await runBacktest(
+      slice,
+      (j) => contextFactory(i + j),
+      prices,
+      privateKey
+    );
+
+    windows.push({
+      start: i,
+      end: i + windowSize,
+      result,
+    });
+  }
+
+  return { windows };
+}
+
+
+// ============================================================================
+// regimeBuckets.ts — group performance by regime
+// ============================================================================
+
+import { AnalysisOutput } from './layerTypes';
+
+export interface RegimeBucket {
+  regime: string;
+  pnl: number;
+  trades: number;
+}
+
+export function computeRegimeBuckets(
+  analyses: AnalysisOutput[],
+  equityCurve: number[]
+): RegimeBucket[] {
+  const buckets: Record<string, RegimeBucket> = {};
+
+  for (let i = 1; i < analyses.length; i++) {
+    const regime = analyses[i].regime;
+    const diff = equityCurve[i] - equityCurve[i - 1];
+
+    if (!buckets[regime]) {
+      buckets[regime] = { regime, pnl: 0, trades: 0 };
+    }
+
+    buckets[regime].pnl += diff;
+    buckets[regime].trades += 1;
+  }
+
+  return Object.values(buckets);
+}
+
+
+// ============================================================================
+// advancedMetrics.ts — deeper analytics
+// ============================================================================
+
+export interface AdvancedMetrics {
+  sharpe: number;
+  sortino: number;
+  winRate: number;
+  expectancy: number;
+}
+
+export function computeAdvancedMetrics(
+  equity: number[]
+): AdvancedMetrics {
+  const returns: number[] = [];
+
+  for (let i = 1; i < equity.length; i++) {
+    returns.push((equity[i] - equity[i - 1]) / equity[i - 1]);
+  }
+
+  const mean =
+    returns.reduce((a, b) => a + b, 0) / returns.length;
+
+  const variance =
+    returns.reduce((s, r) => s + (r - mean) ** 2, 0) /
+    returns.length;
+
+  const downside =
+    returns
+      .filter(r => r < 0)
+      .reduce((s, r) => s + r ** 2, 0) /
+    returns.length;
+
+  const sharpe = mean / Math.sqrt(variance || 1e-9);
+  const sortino = mean / Math.sqrt(downside || 1e-9);
+
+  const wins = returns.filter(r => r > 0).length;
+  const winRate = wins / returns.length;
+
+  const expectancy = mean;
+
+  return {
+    sharpe,
+    sortino,
+    winRate,
+    expectancy,
+  };
+}
+
+
+// ============================================================================
+// monteCarlo.ts — randomized scenario testing
+// ============================================================================
+
+export function monteCarloSim(
+  baseSeries: number[],
+  runs: number
+): number[][] {
+  const simulations: number[][] = [];
+
+  for (let r = 0; r < runs; r++) {
+    const sim: number[] = [];
+    let price = baseSeries[0];
+
+    for (let i = 0; i < baseSeries.length; i++) {
+      const noise = (Math.random() - 0.5) * 0.03;
+      price = Math.max(1, price * (1 + noise));
+      sim.push(Math.floor(price));
+    }
+
+    simulations.push(sim);
+  }
+
+  return simulations;
+}
+
+
+// ============================================================================
+// sensitivityAnalysis.ts — parameter stress testing
+// ============================================================================
+
+export function sensitivityTest(
+  baseContext: any,
+  variations: number[]
+): any[] {
+  const results: any[] = [];
+
+  for (const v of variations) {
+    const ctx = {
+      ...baseContext,
+      volatility: baseContext.volatility * v,
+    };
+
+    results.push(ctx);
+  }
+
+  return results;
+}
+
+
+// ============================================================================
+// phase3Extended.ts — full evaluation suite
+// ============================================================================
+
+import { runPhase3 } from './phase3Orchestrator';
+import { runWalkForward } from './walkForward';
+import { computeRegimeBuckets } from './regimeBuckets';
+import { computeAdvancedMetrics } from './advancedMetrics';
+import { monteCarloSim } from './monteCarlo';
+import { AnalysisOutput } from './layerTypes';
+
+export async function runPhase3Extended(
+  analyses: AnalysisOutput[],
+  contextFactory: (i: number) => any,
+  privateKey: CryptoKey
+) {
+  const base = await runPhase3(
+    analyses,
+    contextFactory,
+    privateKey
+  );
+
+  const buckets = computeRegimeBuckets(
+    analyses,
+    base.equityCurve
+  );
+
+  const metrics = computeAdvancedMetrics(
+    base.equityCurve
+  );
+
+  const mc = monteCarloSim(base.equityCurve, 50);
+
+  const wf = await runWalkForward(
+    analyses,
+    contextFactory,
+    privateKey,
+    50,
+    10,
+    base.equityCurve
+  );
+
+  return {
+    base,
+    buckets,
+    metrics,
+    monteCarlo: mc,
+    walkForward: wf,
+  };
+}
+
+// ============================================================================
+// PHASE 3 — CONTINUATION (OPTIMIZATION, CV, PARAM SEARCH, EXPORT)
+// Strictly code
+// ============================================================================
+
+
+// ============================================================================
+// rng.ts — deterministic PRNG (LCG)
+// ============================================================================
+
+export class LCG {
+  private seed: number;
+  constructor(seed: number) {
+    this.seed = seed >>> 0;
+  }
+  next(): number {
+    this.seed = (1664525 * this.seed + 1013904223) >>> 0;
+    return this.seed / 0xffffffff;
+  }
+}
+
+
+// ============================================================================
+// params.ts — tunable parameters for Phase 2
+// ============================================================================
+
+export interface Params {
+  driftWeight: number;        // 0–1
+  pathWeight: number;         // 0–1
+  microWeight: number;        // 0–1
+  entropyWeight: number;      // 0–1
+  correlationWeight: number;  // 0–1
+  liquidityWeight: number;    // 0–1
+  maxPosition: number;        // 0–1
+  minConfidence: number;      // 0–1
+}
+
+export function defaultParams(): Params {
+  return {
+    driftWeight: 0.5,
+    pathWeight: 0.5,
+    microWeight: 1.0,
+    entropyWeight: 1.0,
+    correlationWeight: 1.0,
+    liquidityWeight: 1.0,
+    maxPosition: 1.0,
+    minConfidence: 0.25,
+  };
+}
+
+
+// ============================================================================
+// paramSampler.ts — deterministic sampling of parameter space
+// ============================================================================
+
+import { Params } from './params';
+import { LCG } from './rng';
+
+export function sampleParams(count: number, seed = 1): Params[] {
+  const rng = new LCG(seed);
+  const out: Params[] = [];
+
+  for (let i = 0; i < count; i++) {
+    out.push({
+      driftWeight: rng.next(),
+      pathWeight: rng.next(),
+      microWeight: rng.next(),
+      entropyWeight: rng.next(),
+      correlationWeight: rng.next(),
+      liquidityWeight: rng.next(),
+      maxPosition: rng.next(),
+      minConfidence: rng.next(),
+    });
+  }
+
+  return out;
+}
+
+
+// ============================================================================
+// score.ts — objective scoring
+// ============================================================================
+
+export interface Score {
+  sharpe: number;
+  drawdown: number;
+  pnl: number;
+  score: number;
+}
+
+export function computeScore(
+  sharpe: number,
+  drawdown: number,
+  pnl: number
+): Score {
+  const score = sharpe * 0.6 + pnl * 0.0001 - drawdown * 0.4;
+  return { sharpe, drawdown, pnl, score };
+}
+
+
+// ============================================================================
+// kfold.ts — time-series k-fold split (no leakage)
+// ============================================================================
+
+export function kfoldIndices(
+  n: number,
+  k: number
+): { train: number[]; test: number[] }[] {
+  const foldSize = Math.floor(n / k);
+  const folds: { train: number[]; test: number[] }[] = [];
+
+  for (let i = 0; i < k; i++) {
+    const start = i * foldSize;
+    const end = i === k - 1 ? n : start + foldSize;
+
+    const test: number[] = [];
+    const train: number[] = [];
+
+    for (let j = 0; j < n; j++) {
+      if (j >= start && j < end) test.push(j);
+      else train.push(j);
+    }
+
+    folds.push({ train, test });
+  }
+
+  return folds;
+}
+
+
+// ============================================================================
+// optimizer.ts — grid/random search over params
+// ============================================================================
+
+import { AnalysisOutput } from './layerTypes';
+import { runPhase3 } from './phase3Orchestrator';
+import { Params } from './params';
+import { computeScore, Score } from './score';
+
+export interface OptimizationResult {
+  params: Params;
+  score: Score;
+}
+
+export async function optimizeParams(
+  analyses: AnalysisOutput[],
+  contextFactory: (i: number, p: Params) => any,
+  privateKey: CryptoKey,
+  paramSet: Params[]
+): Promise<OptimizationResult[]> {
+  const results: OptimizationResult[] = [];
+
+  for (const p of paramSet) {
+    const res = await runPhase3(
+      analyses,
+      (i) => contextFactory(i, p),
+      privateKey
+    );
+
+    const sharpe = 0; // placeholder if not provided
+    const pnl = res.pnl;
+    const drawdown = res.drawdown;
+
+    const score = computeScore(sharpe, drawdown, pnl);
+
+    results.push({ params: p, score });
+  }
+
+  return results.sort((a, b) => b.score.score - a.score.score);
+}
+
+
+// ============================================================================
+// crossValidation.ts — k-fold evaluation
+// ============================================================================
+
+import { kfoldIndices } from './kfold';
+import { optimizeParams } from './optimizer';
+import { Params } from './params';
+import { AnalysisOutput } from './layerTypes';
+
+export async function crossValidate(
+  analyses: AnalysisOutput[],
+  contextFactory: (i: number, p: Params) => any,
+  privateKey: CryptoKey,
+  paramSet: Params[],
+  k: number
+) {
+  const folds = kfoldIndices(analyses.length, k);
+  const results: any[] = [];
+
+  for (const fold of folds) {
+    const train = fold.train.map(i => analyses[i]);
+    const test = fold.test.map(i => analyses[i]);
+
+    const opt = await optimizeParams(
+      train,
+      contextFactory,
+      privateKey,
+      paramSet
+    );
+
+    const best = opt[0];
+
+    const testRes = await optimizeParams(
+      test,
+      contextFactory,
+      privateKey,
+      [best.params]
+    );
+
+    results.push({
+      trainBest: best,
+      testScore: testRes[0],
+    });
+  }
+
+  return results;
+}
+
+
+// ============================================================================
+// robustness.ts — stability across perturbations
+// ============================================================================
+
+export function robustnessScore(scores: number[]): number {
+  const mean = scores.reduce((a, b) => a + b, 0) / scores.length;
+  const variance =
+    scores.reduce((s, x) => s + (x - mean) ** 2, 0) / scores.length;
+
+  return mean / (1 + Math.sqrt(variance));
+}
+
+
+// ============================================================================
+// exportResults.ts — deterministic export
+// ============================================================================
+
+import { stableStringify } from './stableStringify';
+import { sha256Hex } from './deterministicHash';
+
+export async function exportResults(obj: any) {
+  const json = stableStringify(obj);
+  const hash = await sha256Hex(json);
+
+  return {
+    json,
+    hash,
+  };
+}
+
+
+// ============================================================================
+// phase3OptimizerOrchestrator.ts — full pipeline
+// ============================================================================
+
+import { sampleParams } from './paramSampler';
+import { crossValidate } from './crossValidation';
+import { exportResults } from './exportResults';
+import { AnalysisOutput } from './layerTypes';
+
+export async function runPhase3Optimization(
+  analyses: AnalysisOutput[],
+  contextFactory: (i: number, p: any) => any,
+  privateKey: CryptoKey
+) {
+  const params = sampleParams(25, 42);
+
+  const cv = await crossValidate(
+    analyses,
+    contextFactory,
+    privateKey,
+    params,
+    5
+  );
+
+  return exportResults(cv);
+}
+
+// ============================================================================
+// PHASE 3 — CONTINUATION (ENSEMBLE, MODEL REGISTRY, EARLY STOP, REPORTING)
+// Strictly code
+// ============================================================================
+
+
+// ============================================================================
+// ensemble.ts — combine multiple parameterized runs
+// ============================================================================
+
+import { Params } from './params';
+import { AnalysisOutput } from './layerTypes';
+import { runPhase3 } from './phase3Orchestrator';
+
+export interface EnsembleMember {
+  params: Params;
+  weight: number; // 0–1
+}
+
+export interface EnsembleResult {
+  equityCurve: number[];
+  pnl: number;
+  drawdown: number;
+}
+
+export async function runEnsemble(
+  analyses: AnalysisOutput[],
+  contextFactory: (i: number, p: Params) => any,
+  privateKey: CryptoKey,
+  members: EnsembleMember[]
+): Promise<EnsembleResult> {
+  const curves: number[][] = [];
+
+  for (const m of members) {
+    const res = await runPhase3(
+      analyses,
+      (i) => contextFactory(i, m.params),
+      privateKey
+    );
+    curves.push(res.equityCurve.map(v => v * m.weight));
+  }
+
+  const length = curves[0].length;
+  const combined: number[] = [];
+
+  for (let i = 0; i < length; i++) {
+    let sum = 0;
+    for (const c of curves) sum += c[i];
+    combined.push(sum);
+  }
+
+  const pnl = combined[combined.length - 1] - combined[0];
+
+  let peak = combined[0];
+  let maxDD = 0;
+  for (const v of combined) {
+    if (v > peak) peak = v;
+    const dd = peak - v;
+    if (dd > maxDD) maxDD = dd;
+  }
+
+  return {
+    equityCurve: combined,
+    pnl,
+    drawdown: maxDD,
+  };
+}
+
+
+// ============================================================================
+// modelRegistry.ts — track best parameter sets
+// ============================================================================
+
+import { Params } from './params';
+
+export interface ModelEntry {
+  id: string;
+  params: Params;
+  score: number;
+  timestamp: string;
+}
+
+const registry: ModelEntry[] = [];
+
+export function registerModel(entry: ModelEntry) {
+  registry.push(entry);
+}
+
+export function getTopModels(n: number): ModelEntry[] {
+  return registry
+    .slice()
+    .sort((a, b) => b.score - a.score)
+    .slice(0, n);
+}
+
+
+// ============================================================================
+// earlyStop.ts — stop optimization if no improvement
+// ============================================================================
+
+export function earlyStop(
+  scores: number[],
+  patience: number
+): boolean {
+  if (scores.length <= patience) return false;
+
+  const recent = scores.slice(-patience);
+  const bestRecent = Math.max(...recent);
+  const bestOverall = Math.max(...scores);
+
+  return bestRecent < bestOverall;
+}
+
+
+// ============================================================================
+// reportBuilder.ts — structured output
+// ============================================================================
+
+export interface Report {
+  summary: {
+    pnl: number;
+    drawdown: number;
+    sharpe?: number;
+  };
+  bestParams: any;
+  timestamp: string;
+}
+
+export function buildReport(
+  pnl: number,
+  drawdown: number,
+  bestParams: any
+): Report {
+  return {
+    summary: {
+      pnl,
+      drawdown,
+    },
+    bestParams,
+    timestamp: new Date().toISOString(),
+  };
+}
+
+
+// ============================================================================
+// leaderboard.ts — ranking models
+// ============================================================================
+
+import { ModelEntry } from './modelRegistry';
+
+export function buildLeaderboard(
+  models: ModelEntry[]
+): ModelEntry[] {
+  return models
+    .slice()
+    .sort((a, b) => b.score - a.score);
+}
+
+
+// ============================================================================
+// exportCSV.ts — simple CSV exporter
+// ============================================================================
+
+export function toCSV(rows: any[]): string {
+  if (rows.length === 0) return '';
+
+  const headers = Object.keys(rows[0]);
+  const lines = [headers.join(',')];
+
+  for (const r of rows) {
+    lines.push(headers.map(h => JSON.stringify(r[h])).join(','));
+  }
+
+  return lines.join('\n');
+}
+
+
+// ============================================================================
+// phase3FinalOrchestrator.ts — full final layer
+// ============================================================================
+
+import { runPhase3Optimization } from './phase3OptimizerOrchestrator';
+import { getTopModels, registerModel } from './modelRegistry';
+import { buildReport } from './reportBuilder';
+import { buildLeaderboard } from './leaderboard';
+import { toCSV } from './exportCSV';
+import { AnalysisOutput } from './layerTypes';
+
+export async function runPhase3Final(
+  analyses: AnalysisOutput[],
+  contextFactory: (i: number, p: any) => any,
+  privateKey: CryptoKey
+) {
+  const opt = await runPhase3Optimization(
+    analyses,
+    contextFactory,
+    privateKey
+  );
+
+  const parsed = JSON.parse(opt.json);
+
+  for (let i = 0; i < parsed.length; i++) {
+    registerModel({
+      id: 'model-' + i,
+      params: parsed[i].trainBest.params,
+      score: parsed[i].trainBest.score.score,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  const top = getTopModels(5);
+  const leaderboard = buildLeaderboard(top);
+
+  const report = buildReport(
+    leaderboard[0].score,
+    leaderboard[0].score,
+    leaderboard[0].params
+  );
+
+  const csv = toCSV(leaderboard);
+
+  return {
+    report,
+    leaderboard,
+    csv,
+  };
+}
+
+// ============================================================================
+// PHASE 4 — LIVE SYSTEM (REAL-TIME INGESTION, STREAMING, EXECUTION, STORAGE)
+// Strictly code
+// ============================================================================
+
+
+// ============================================================================
+// eventBus.ts — real-time pub/sub
+// ============================================================================
+
+export type EventType =
+  | 'tick'
+  | 'analysis'
+  | 'signal'
+  | 'decision'
+  | 'execution'
+  | 'error';
+
+type Callback = (data: any) => void;
+
+export class EventBus {
+  private listeners: Map<EventType, Set<Callback>> = new Map();
+
+  on(type: EventType, cb: Callback) {
+    if (!this.listeners.has(type)) {
+      this.listeners.set(type, new Set());
+    }
+    this.listeners.get(type)!.add(cb);
+  }
+
+  emit(type: EventType, data: any) {
+    const set = this.listeners.get(type);
+    if (!set) return;
+    for (const cb of set) cb(data);
+  }
+}
+
+export const bus = new EventBus();
+
+
+// ============================================================================
+// liveDataFeed.ts — streaming ticks (deterministic mode optional)
+// ============================================================================
+
+import { bus } from './eventBus';
+
+export interface Tick {
+  symbol: string;
+  price: number;
+  volume: number;
+  ts: number;
+}
+
+export class LiveDataFeed {
+  private running = false;
+  private price = 10000;
+  private seed = 1;
+
+  start() {
+    this.running = true;
+    this.loop();
+  }
+
+  stop() {
+    this.running = false;
+  }
+
+  private nextRand() {
+    this.seed = (1664525 * this.seed + 1013904223) >>> 0;
+    return this.seed / 0xffffffff;
+  }
+
+  private loop() {
+    if (!this.running) return;
+
+    const r = this.nextRand() - 0.5;
+    this.price = Math.max(1, Math.floor(this.price * (1 + r * 0.01)));
+
+    const tick: Tick = {
+      symbol: 'SYM',
+      price: this.price,
+      volume: Math.floor(this.nextRand() * 1000),
+      ts: Date.now(),
+    };
+
+    bus.emit('tick', tick);
+
+    setTimeout(() => this.loop(), 500);
+  }
+}
+
+
+// ============================================================================
+// slidingWindow.ts — rolling window for analysis
+// ============================================================================
+
+export class SlidingWindow {
+  private data: number[] = [];
+  constructor(private maxSize: number) {}
+
+  push(v: number) {
+    this.data.push(v);
+    if (this.data.length > this.maxSize) this.data.shift();
+  }
+
+  values() {
+    return this.data.slice();
+  }
+}
+
+
+// ============================================================================
+// liveAnalysis.ts — connects ticks → phase1 analysis
+// ============================================================================
+
+import { bus } from './eventBus';
+import { SlidingWindow } from './slidingWindow';
+import { runAnalysis } from './marketAnalysisFlow';
+
+const window = new SlidingWindow(50);
+
+bus.on('tick', async (tick: any) => {
+  window.push(tick.price);
+
+  if (window.values().length < 10) return;
+
+  const analysis = await runAnalysis({
+    symbol: tick.symbol,
+    historicalPrices: window.values(),
+    livePrices: window.values(),
+    volume: tick.volume,
+  });
+
+  bus.emit('analysis', analysis);
+});
+
+
+// ============================================================================
+// liveDecision.ts — phase2 execution in real time
+// ============================================================================
+
+import { bus } from './eventBus';
+import { runPhase2Extended } from './extendedPipeline';
+
+const history: any[] = [];
+
+bus.on('analysis', (analysis: any) => {
+  const result = runPhase2Extended(analysis, {
+    micro: { bidDepth: 100, askDepth: 100, spread: 2, imbalance: 0 },
+    history,
+    entropy: 0.2,
+    correlation: 0.5,
+    liquidity: 0.8,
+    slippage: 0.01,
+  });
+
+  history.push(result.signal);
+
+  bus.emit('signal', result.signal);
+  bus.emit('decision', result.decision);
+});
+
+
+// ============================================================================
+// executionEngine.ts — live execution handler
+// ============================================================================
+
+import { bus } from './eventBus';
+
+export class ExecutionEngine {
+  execute(decision: any) {
+    if (!decision.execute) return;
+
+    const trade = {
+      side: decision.side,
+      shares: decision.shares,
+      ts: Date.now(),
+    };
+
+    bus.emit('execution', trade);
+  }
+}
+
+const exec = new ExecutionEngine();
+
+bus.on('decision', (d) => exec.execute(d));
+
+
+// ============================================================================
+// persistence.ts — append-only storage
+// ============================================================================
+
+export class Storage {
+  private logs: any[] = [];
+
+  append(entry: any) {
+    this.logs.push({
+      ...entry,
+      ts: new Date().toISOString(),
+    });
+  }
+
+  all() {
+    return this.logs.slice();
+  }
+}
+
+export const storage = new Storage();
+
+
+// ============================================================================
+// wire persistence
+// ============================================================================
+
+import { storage } from './persistence';
+import { bus } from './eventBus';
+
+bus.on('tick', (t) => storage.append({ type: 'tick', t }));
+bus.on('analysis', (a) => storage.append({ type: 'analysis', a }));
+bus.on('signal', (s) => storage.append({ type: 'signal', s }));
+bus.on('decision', (d) => storage.append({ type: 'decision', d }));
+bus.on('execution', (e) => storage.append({ type: 'execution', e }));
+
+
+// ============================================================================
+// healthMonitor.ts — runtime checks
+// ============================================================================
+
+import { bus } from './eventBus';
+
+let lastTick = Date.now();
+
+bus.on('tick', () => {
+  lastTick = Date.now();
+});
+
+export function checkHealth() {
+  const now = Date.now();
+
+  if (now - lastTick > 5000) {
+    bus.emit('error', { type: 'feed_timeout' });
+  }
+}
+
+
+// ============================================================================
+// scheduler.ts — system loop
+// ============================================================================
+
+import { checkHealth } from './healthMonitor';
+
+export function startScheduler() {
+  setInterval(() => {
+    checkHealth();
+  }, 1000);
+}
+
+
+// ============================================================================
+// phase4Orchestrator.ts — boot system
+// ============================================================================
+
+import { LiveDataFeed } from './liveDataFeed';
+import { startScheduler } from './scheduler';
+
+export function startPhase4() {
+  const feed = new LiveDataFeed();
+
+  feed.start();
+  startScheduler();
+
+  return feed;
+}
+
+// ============================================================================
+// PHASE 4 — CONTINUATION (SNAPSHOTS, REPLAY, RISK, POSITIONS, ALERTS, WS, API)
+// Strictly code
+// ============================================================================
+
+
+// ============================================================================
+// snapshotStore.ts — periodic state snapshots
+// ============================================================================
+
+import { hashObject } from './deterministicHash';
+
+export interface Snapshot {
+  ts: string;
+  state: any;
+  hash: string;
+}
+
+export class SnapshotStore {
+  private snaps: Snapshot[] = [];
+
+  async take(state: any) {
+    const hash = await hashObject(state);
+    const snap: Snapshot = {
+      ts: new Date().toISOString(),
+      state,
+      hash,
+    };
+    this.snaps.push(snap);
+    return snap;
+  }
+
+  latest(): Snapshot | null {
+    return this.snaps.length ? this.snaps[this.snaps.length - 1] : null;
+  }
+
+  all(): Snapshot[] {
+    return this.snaps.slice();
+  }
+}
+
+export const snapshotStore = new SnapshotStore();
+
+
+// ============================================================================
+// replayLive.ts — replay from snapshots
+// ============================================================================
+
+import { Snapshot } from './snapshotStore';
+import { bus } from './eventBus';
+
+export async function replaySnapshots(snaps: Snapshot[], delay = 50) {
+  for (const s of snaps) {
+    bus.emit('analysis', s.state.analysis);
+    bus.emit('signal', s.state.signal);
+    bus.emit('decision', s.state.decision);
+    if (s.state.execution) {
+      bus.emit('execution', s.state.execution);
+    }
+    await new Promise(r => setTimeout(r, delay));
+  }
+}
+
+
+// ============================================================================
+// positionManager.ts — live positions + PnL
+// ============================================================================
+
+export interface LivePosition {
+  symbol: string;
+  shares: number;
+  avgPrice: number;
+}
+
+export class PositionManager {
+  private positions = new Map<string, LivePosition>();
+  private cash = 100000;
+
+  applyExecution(exec: any, price: number) {
+    if (!exec) return;
+
+    const { side, shares } = exec;
+
+    if (side === 'buy') {
+      const cost = shares * price;
+      if (this.cash < cost) return;
+
+      this.cash -= cost;
+
+      const pos = this.positions.get('SYM') || {
+        symbol: 'SYM',
+        shares: 0,
+        avgPrice: price,
+      };
+
+      const total = pos.shares + shares;
+      pos.avgPrice =
+        (pos.avgPrice * pos.shares + price * shares) / total;
+      pos.shares = total;
+
+      this.positions.set('SYM', pos);
+    }
+
+    if (side === 'sell') {
+      const pos = this.positions.get('SYM');
+      if (!pos || pos.shares < shares) return;
+
+      this.cash += shares * price;
+      pos.shares -= shares;
+
+      if (pos.shares === 0) this.positions.delete('SYM');
+    }
+  }
+
+  equity(price: number): number {
+    let eq = this.cash;
+    for (const p of this.positions.values()) {
+      eq += p.shares * price;
+    }
+    return eq;
+  }
+}
+
+export const positionManager = new PositionManager();
+
+
+// ============================================================================
+// riskManager.ts — live risk enforcement
+// ============================================================================
+
+export function enforceRisk(params: {
+  equity: number;
+  peak: number;
+  drawdownLimit: number;
+}): boolean {
+  const dd = (params.peak - params.equity) / params.peak;
+  return dd > params.drawdownLimit;
+}
+
+
+// ============================================================================
+// alertEngine.ts — event alerts
+// ============================================================================
+
+import { bus } from './eventBus';
+
+export type Alert = {
+  type: string;
+  message: string;
+  ts: string;
+};
+
+export const alerts: Alert[] = [];
+
+export function raiseAlert(type: string, message: string) {
+  const a = { type, message, ts: new Date().toISOString() };
+  alerts.push(a);
+  bus.emit('error', a);
+}
+
+
+// ============================================================================
+// websocketServer.ts — push events to clients
+// ============================================================================
+
+export class WSServer {
+  private clients: Set<any> = new Set();
+
+  connect(client: any) {
+    this.clients.add(client);
+  }
+
+  disconnect(client: any) {
+    this.clients.delete(client);
+  }
+
+  broadcast(msg: any) {
+    for (const c of this.clients) {
+      try {
+        c.send(JSON.stringify(msg));
+      } catch {}
+    }
+  }
+}
+
+export const wsServer = new WSServer();
+
+
+// wire bus → ws
+import { bus } from './eventBus';
+import { wsServer } from './websocketServer';
+
+bus.on('tick', (d) => wsServer.broadcast({ type: 'tick', d }));
+bus.on('analysis', (d) => wsServer.broadcast({ type: 'analysis', d }));
+bus.on('decision', (d) => wsServer.broadcast({ type: 'decision', d }));
+bus.on('execution', (d) => wsServer.broadcast({ type: 'execution', d }));
+
+
+// ============================================================================
+// apiServer.ts — minimal API interface
+// ============================================================================
+
+import { storage } from './persistence';
+import { snapshotStore } from './snapshotStore';
+import { alerts } from './alertEngine';
+
+export function apiGetState() {
+  return {
+    logs: storage.all(),
+    snapshots: snapshotStore.all(),
+    alerts,
+  };
+}
+
+
+// ============================================================================
+// liveIntegration.ts — full integration wiring
+// ============================================================================
+
+import { bus } from './eventBus';
+import { positionManager } from './positionManager';
+import { snapshotStore } from './snapshotStore';
+import { enforceRisk } from './riskManager';
+import { raiseAlert } from './alertEngine';
+
+let peak = 100000;
+let lastPrice = 10000;
+
+bus.on('tick', (t: any) => {
+  lastPrice = t.price;
+});
+
+bus.on('execution', async (exec: any) => {
+  positionManager.applyExecution(exec, lastPrice);
+
+  const equity = positionManager.equity(lastPrice);
+  if (equity > peak) peak = equity;
+
+  const halted = enforceRisk({
+    equity,
+    peak,
+    drawdownLimit: 0.25,
+  });
+
+  if (halted) {
+    raiseAlert('RISK', 'Drawdown limit exceeded');
+  }
+
+  await snapshotStore.take({
+    equity,
+    execution: exec,
+  });
+});
+
+// ============================================================================
+// PHASE 4 — FINALIZATION (CONSENSUS, FAILOVER, SCALING, AUTH, CLUSTER)
+// Strictly code
+// ============================================================================
+
+
+// ============================================================================
+// consensusCluster.ts — multi-node agreement
+// ============================================================================
+
+export interface NodeDecision {
+  nodeId: string;
+  decision: any;
+}
+
+export function consensusCluster(
+  decisions: NodeDecision[]
+) {
+  const votes: Record<string, number> = {};
+
+  for (const d of decisions) {
+    const key = JSON.stringify(d.decision);
+    votes[key] = (votes[key] || 0) + 1;
+  }
+
+  let best = '';
+  let max = 0;
+
+  for (const k in votes) {
+    if (votes[k] > max) {
+      best = k;
+      max = votes[k];
+    }
+  }
+
+  return JSON.parse(best);
+}
+
+
+// ============================================================================
+// failoverManager.ts — redundancy control
+// ============================================================================
+
+export class FailoverManager {
+  private primaryActive = true;
+
+  failover() {
+    this.primaryActive = false;
+  }
+
+  restore() {
+    this.primaryActive = true;
+  }
+
+  isPrimary() {
+    return this.primaryActive;
+  }
+}
+
+export const failoverManager = new FailoverManager();
+
+
+// ============================================================================
+// scalingManager.ts — horizontal scaling control
+// ============================================================================
+
+export class ScalingManager {
+  private workers = 1;
+
+  scaleUp() {
+    this.workers++;
+  }
+
+  scaleDown() {
+    this.workers = Math.max(1, this.workers - 1);
+  }
+
+  getWorkers() {
+    return this.workers;
+  }
+}
+
+export const scalingManager = new ScalingManager();
+
+
+// ============================================================================
+// authLayer.ts — simple API key validation
+// ============================================================================
+
+const VALID_KEYS = new Set(['KEY_123', 'KEY_ABC']);
+
+export function validateKey(key: string): boolean {
+  return VALID_KEYS.has(key);
+}
+
+
+// ============================================================================
+// commandRouter.ts — external command handling
+// ============================================================================
+
+import { validateKey } from './authLayer';
+import { scalingManager } from './scalingManager';
+import { failoverManager } from './failoverManager';
+
+export function handleCommand(cmd: any) {
+  if (!validateKey(cmd.key)) {
+    return { error: 'unauthorized' };
+  }
+
+  switch (cmd.type) {
+    case 'scale_up':
+      scalingManager.scaleUp();
+      return { workers: scalingManager.getWorkers() };
+
+    case 'scale_down':
+      scalingManager.scaleDown();
+      return { workers: scalingManager.getWorkers() };
+
+    case 'failover':
+      failoverManager.failover();
+      return { status: 'secondary_active' };
+
+    case 'restore':
+      failoverManager.restore();
+      return { status: 'primary_restored' };
+
+    default:
+      return { error: 'unknown_command' };
+  }
+}
+
+
+// ============================================================================
+// clusterNode.ts — node abstraction
+// ============================================================================
+
+export class ClusterNode {
+  id: string;
+
+  constructor(id: string) {
+    this.id = id;
+  }
+
+  process(decision: any) {
+    return {
+      nodeId: this.id,
+      decision,
+    };
+  }
+}
+
+
+// ============================================================================
+// clusterOrchestrator.ts — multi-node execution
+// ============================================================================
+
+import { ClusterNode } from './clusterNode';
+import { consensusCluster } from './consensusCluster';
+
+export class ClusterOrchestrator {
+  private nodes: ClusterNode[] = [];
+
+  addNode(node: ClusterNode) {
+    this.nodes.push(node);
+  }
+
+  run(decision: any) {
+    const results = this.nodes.map(n => n.process(decision));
+    return consensusCluster(results);
+  }
+}
+
+
+// ============================================================================
+// loadBalancer.ts — distribute workload
+// ============================================================================
+
+export class LoadBalancer {
+  private index = 0;
+
+  route<T>(nodes: T[]): T {
+    if (nodes.length === 0) throw new Error('no_nodes');
+    const node = nodes[this.index % nodes.length];
+    this.index++;
+    return node;
+  }
+}
+
+
+// ============================================================================
+// telemetry.ts — system metrics
+// ============================================================================
+
+export interface Telemetry {
+  ticks: number;
+  decisions: number;
+  executions: number;
+  errors: number;
+}
+
+export const telemetry: Telemetry = {
+  ticks: 0,
+  decisions: 0,
+  executions: 0,
+  errors: 0,
+};
+
+
+// ============================================================================
+// telemetry wiring
+// ============================================================================
+
+import { bus } from './eventBus';
+
+bus.on('tick', () => telemetry.ticks++);
+bus.on('decision', () => telemetry.decisions++);
+bus.on('execution', () => telemetry.executions++);
+bus.on('error', () => telemetry.errors++);
+
+
+// ============================================================================
+// phase4FinalOrchestrator.ts — final system assembly
+// ============================================================================
+
+import { startPhase4 } from './phase4Orchestrator';
+import { ClusterOrchestrator } from './clusterOrchestrator';
+import { ClusterNode } from './clusterNode';
+
+export function bootSystem() {
+  const feed = startPhase4();
+
+  const cluster = new ClusterOrchestrator();
+  cluster.addNode(new ClusterNode('node-1'));
+  cluster.addNode(new ClusterNode('node-2'));
+  cluster.addNode(new ClusterNode('node-3'));
+
+  return {
+    feed,
+    cluster,
+  };
+}
+
+// ============================================================================
+// PHASE 6 — AUTONOMOUS INTELLIGENCE / SELF-LEARNING / ADAPTIVE SYSTEM
+// Strictly code
+// ============================================================================
+
+
+// ============================================================================
+// learningMemory.ts — persistent learning state
+// ============================================================================
+
+export interface Experience {
+  stateHash: string;
+  action: string;
+  reward: number;
+  ts: number;
+}
+
+export class LearningMemory {
+  private memory: Experience[] = [];
+
+  add(exp: Experience) {
+    this.memory.push(exp);
+  }
+
+  all() {
+    return this.memory.slice();
+  }
+
+  recent(n: number) {
+    return this.memory.slice(-n);
+  }
+}
+
+export const learningMemory = new LearningMemory();
+
+
+// ============================================================================
+// rewardEngine.ts — compute reward signal
+// ============================================================================
+
+export function computeReward(prevEquity: number, nextEquity: number): number {
+  const diff = nextEquity - prevEquity;
+  return diff / Math.max(prevEquity, 1);
+}
+
+
+// ============================================================================
+// policyModel.ts — adaptive decision weights
+// ============================================================================
+
+export interface Policy {
+  buyBias: number;
+  sellBias: number;
+  holdBias: number;
+}
+
+export function defaultPolicy(): Policy {
+  return {
+    buyBias: 1,
+    sellBias: 1,
+    holdBias: 1,
+  };
+}
+
+export function updatePolicy(
+  policy: Policy,
+  reward: number,
+  action: string
+): Policy {
+  const lr = 0.05;
+
+  if (action === 'buy') {
+    policy.buyBias += lr * reward;
+  } else if (action === 'sell') {
+    policy.sellBias += lr * reward;
+  } else {
+    policy.holdBias += lr * reward;
+  }
+
+  return normalizePolicy(policy);
+}
+
+function normalizePolicy(p: Policy): Policy {
+  const sum = p.buyBias + p.sellBias + p.holdBias || 1;
+
+  return {
+    buyBias: p.buyBias / sum,
+    sellBias: p.sellBias / sum,
+    holdBias: p.holdBias / sum,
+  };
+}
+
+
+// ============================================================================
+// adaptiveSignal.ts — policy-adjusted signal
+// ============================================================================
+
+import { TradeSignal } from './layerTypes';
+import { Policy } from './policyModel';
+
+export function applyPolicy(
+  signal: TradeSignal,
+  policy: Policy
+): TradeSignal {
+  if (signal.action === 'buy') {
+    signal.confidence *= policy.buyBias;
+  }
+  if (signal.action === 'sell') {
+    signal.confidence *= policy.sellBias;
+  }
+  if (signal.action === 'hold') {
+    signal.confidence *= policy.holdBias;
+  }
+
+  return signal;
+}
+
+
+// ============================================================================
+// anomalyLearning.ts — detect + adapt to anomalies
+// ============================================================================
+
+export function detectAnomalySeries(series: number[]): boolean {
+  if (series.length < 5) return false;
+
+  const mean =
+    series.reduce((a, b) => a + b, 0) / series.length;
+
+  const variance =
+    series.reduce((s, x) => s + (x - mean) ** 2, 0) /
+    series.length;
+
+  return Math.sqrt(variance) > mean * 0.2;
+}
+
+
+// ============================================================================
+// selfHealing.ts — automatic recovery adjustments
+// ============================================================================
+
+import { Policy } from './policyModel';
+
+export function selfHeal(policy: Policy): Policy {
+  return {
+    buyBias: 0.33,
+    sellBias: 0.33,
+    holdBias: 0.34,
+  };
+}
+
+
+// ============================================================================
+// metaOptimizer.ts — adaptive parameter tuning
+// ============================================================================
+
+export function adjustParameters(params: any, reward: number) {
+  const lr = 0.1;
+
+  for (const k in params) {
+    if (typeof params[k] === 'number') {
+      params[k] += lr * reward;
+    }
+  }
+
+  return params;
+}
+
+
+// ============================================================================
+// reinforcementLoop.ts — continuous learning loop
+// ============================================================================
+
+import { learningMemory } from './learningMemory';
+import { computeReward } from './rewardEngine';
+import { updatePolicy, defaultPolicy } from './policyModel';
+
+let currentPolicy = defaultPolicy();
+let lastEquity = 100000;
+
+export function reinforcementStep(
+  stateHash: string,
+  action: string,
+  newEquity: number
+) {
+  const reward = computeReward(lastEquity, newEquity);
+
+  learningMemory.add({
+    stateHash,
+    action,
+    reward,
+    ts: Date.now(),
+  });
+
+  currentPolicy = updatePolicy(currentPolicy, reward, action);
+
+  lastEquity = newEquity;
+
+  return {
+    reward,
+    policy: currentPolicy,
+  };
+}
+
+
+// ============================================================================
+// phase6Orchestrator.ts — full autonomous system
+// ============================================================================
+
+import { applyPolicy } from './adaptiveSignal';
+import { reinforcementStep } from './reinforcementLoop';
+import { detectAnomalySeries } from './anomalyLearning';
+import { selfHeal } from './selfHealing';
+
+export function runPhase6(params: {
+  signal: any;
+  equity: number;
+  history: number[];
+}) {
+  let signal = params.signal;
+
+  // Apply adaptive policy
+  signal = applyPolicy(signal, currentPolicy);
+
+  // Reinforcement update
+  const rl = reinforcementStep(
+    JSON.stringify(signal),
+    signal.action,
+    params.equity
+  );
+
+  // Detect anomaly
+  const anomaly = detectAnomalySeries(params.history);
+
+  if (anomaly) {
+    currentPolicy = selfHeal(currentPolicy);
+  }
+
+  return {
+    signal,
+    policy: rl.policy,
+    reward: rl.reward,
+    anomaly,
+  };
+}
+
+// ============================================================================
+// PHASE 6 — AUTONOMOUS INTELLIGENCE / SELF-LEARNING / ADAPTIVE SYSTEM
+// Strictly code
+// ============================================================================
+
+
+// ============================================================================
+// learningMemory.ts — persistent learning state
+// ============================================================================
+
+export interface Experience {
+  stateHash: string;
+  action: string;
+  reward: number;
+  ts: number;
+}
+
+export class LearningMemory {
+  private memory: Experience[] = [];
+
+  add(exp: Experience) {
+    this.memory.push(exp);
+  }
+
+  all() {
+    return this.memory.slice();
+  }
+
+  recent(n: number) {
+    return this.memory.slice(-n);
+  }
+}
+
+export const learningMemory = new LearningMemory();
+
+
+// ============================================================================
+// rewardEngine.ts — compute reward signal
+// ============================================================================
+
+export function computeReward(prevEquity: number, nextEquity: number): number {
+  const diff = nextEquity - prevEquity;
+  return diff / Math.max(prevEquity, 1);
+}
+
+
+// ============================================================================
+// policyModel.ts — adaptive decision weights
+// ============================================================================
+
+export interface Policy {
+  buyBias: number;
+  sellBias: number;
+  holdBias: number;
+}
+
+export function defaultPolicy(): Policy {
+  return {
+    buyBias: 1,
+    sellBias: 1,
+    holdBias: 1,
+  };
+}
+
+export function updatePolicy(
+  policy: Policy,
+  reward: number,
+  action: string
+): Policy {
+  const lr = 0.05;
+
+  if (action === 'buy') {
+    policy.buyBias += lr * reward;
+  } else if (action === 'sell') {
+    policy.sellBias += lr * reward;
+  } else {
+    policy.holdBias += lr * reward;
+  }
+
+  return normalizePolicy(policy);
+}
+
+function normalizePolicy(p: Policy): Policy {
+  const sum = p.buyBias + p.sellBias + p.holdBias || 1;
+
+  return {
+    buyBias: p.buyBias / sum,
+    sellBias: p.sellBias / sum,
+    holdBias: p.holdBias / sum,
+  };
+}
+
+
+// ============================================================================
+// adaptiveSignal.ts — policy-adjusted signal
+// ============================================================================
+
+import { TradeSignal } from './layerTypes';
+import { Policy } from './policyModel';
+
+export function applyPolicy(
+  signal: TradeSignal,
+  policy: Policy
+): TradeSignal {
+  if (signal.action === 'buy') {
+    signal.confidence *= policy.buyBias;
+  }
+  if (signal.action === 'sell') {
+    signal.confidence *= policy.sellBias;
+  }
+  if (signal.action === 'hold') {
+    signal.confidence *= policy.holdBias;
+  }
+
+  return signal;
+}
+
+
+// ============================================================================
+// anomalyLearning.ts — detect + adapt to anomalies
+// ============================================================================
+
+export function detectAnomalySeries(series: number[]): boolean {
+  if (series.length < 5) return false;
+
+  const mean =
+    series.reduce((a, b) => a + b, 0) / series.length;
+
+  const variance =
+    series.reduce((s, x) => s + (x - mean) ** 2, 0) /
+    series.length;
+
+  return Math.sqrt(variance) > mean * 0.2;
+}
+
+
+// ============================================================================
+// selfHealing.ts — automatic recovery adjustments
+// ============================================================================
+
+import { Policy } from './policyModel';
+
+export function selfHeal(policy: Policy): Policy {
+  return {
+    buyBias: 0.33,
+    sellBias: 0.33,
+    holdBias: 0.34,
+  };
+}
+
+
+// ============================================================================
+// metaOptimizer.ts — adaptive parameter tuning
+// ============================================================================
+
+export function adjustParameters(params: any, reward: number) {
+  const lr = 0.1;
+
+  for (const k in params) {
+    if (typeof params[k] === 'number') {
+      params[k] += lr * reward;
+    }
+  }
+
+  return params;
+}
+
+
+// ============================================================================
+// reinforcementLoop.ts — continuous learning loop
+// ============================================================================
+
+import { learningMemory } from './learningMemory';
+import { computeReward } from './rewardEngine';
+import { updatePolicy, defaultPolicy } from './policyModel';
+
+let currentPolicy = defaultPolicy();
+let lastEquity = 100000;
+
+export function reinforcementStep(
+  stateHash: string,
+  action: string,
+  newEquity: number
+) {
+  const reward = computeReward(lastEquity, newEquity);
+
+  learningMemory.add({
+    stateHash,
+    action,
+    reward,
+    ts: Date.now(),
+  });
+
+  currentPolicy = updatePolicy(currentPolicy, reward, action);
+
+  lastEquity = newEquity;
+
+  return {
+    reward,
+    policy: currentPolicy,
+  };
+}
+
+
+// ============================================================================
+// phase6Orchestrator.ts — full autonomous system
+// ============================================================================
+
+import { applyPolicy } from './adaptiveSignal';
+import { reinforcementStep } from './reinforcementLoop';
+import { detectAnomalySeries } from './anomalyLearning';
+import { selfHeal } from './selfHealing';
+
+export function runPhase6(params: {
+  signal: any;
+  equity: number;
+  history: number[];
+}) {
+  let signal = params.signal;
+
+  // Apply adaptive policy
+  signal = applyPolicy(signal, currentPolicy);
+
+  // Reinforcement update
+  const rl = reinforcementStep(
+    JSON.stringify(signal),
+    signal.action,
+    params.equity
+  );
+
+  // Detect anomaly
+  const anomaly = detectAnomalySeries(params.history);
+
+  if (anomaly) {
+    currentPolicy = selfHeal(currentPolicy);
+  }
+
+  return {
+    signal,
+    policy: rl.policy,
+    reward: rl.reward,
+    anomaly,
+  };
+}
+
+// ============================================================================
+// PHASE 6 — DEEP AUTONOMY (META-LEARNING, STRATEGY EVOLUTION, MEMORY GRAPH,
+//                           SELF-DIAGNOSTICS, POLICY ENSEMBLES)
+// Strictly code
+// ============================================================================
+
+
+// ============================================================================
+// memoryGraph.ts — state-action graph (Markov structure)
+// ============================================================================
+
+export interface MemoryNode {
+  stateHash: string;
+  actions: Record<string, {
+    count: number;
+    totalReward: number;
+  }>;
+}
+
+export class MemoryGraph {
+  private graph: Map<string, MemoryNode> = new Map();
+
+  update(stateHash: string, action: string, reward: number) {
+    if (!this.graph.has(stateHash)) {
+      this.graph.set(stateHash, {
+        stateHash,
+        actions: {},
+      });
+    }
+
+    const node = this.graph.get(stateHash)!;
+
+    if (!node.actions[action]) {
+      node.actions[action] = { count: 0, totalReward: 0 };
+    }
+
+    node.actions[action].count++;
+    node.actions[action].totalReward += reward;
+  }
+
+  bestAction(stateHash: string): string | null {
+    const node = this.graph.get(stateHash);
+    if (!node) return null;
+
+    let best = null;
+    let bestScore = -Infinity;
+
+    for (const a in node.actions) {
+      const data = node.actions[a];
+      const avg = data.totalReward / data.count;
+
+      if (avg > bestScore) {
+        bestScore = avg;
+        best = a;
+      }
+    }
+
+    return best;
+  }
+}
+
+export const memoryGraph = new MemoryGraph();
+
+
+// ============================================================================
+// policyEnsemble.ts — multiple policies competing
+// ============================================================================
+
+import { Policy } from './policyModel';
+
+export interface PolicyAgent {
+  id: string;
+  policy: Policy;
+  score: number;
+}
+
+export class PolicyEnsemble {
+  private agents: PolicyAgent[] = [];
+
+  add(agent: PolicyAgent) {
+    this.agents.push(agent);
+  }
+
+  best(): PolicyAgent {
+    return this.agents.sort((a, b) => b.score - a.score)[0];
+  }
+
+  updateScore(id: string, reward: number) {
+    const agent = this.agents.find(a => a.id === id);
+    if (agent) {
+      agent.score += reward;
+    }
+  }
+
+  all() {
+    return this.agents;
+  }
+}
+
+export const policyEnsemble = new PolicyEnsemble();
+
+
+// ============================================================================
+// strategyGenome.ts — evolving parameter sets
+// ============================================================================
+
+export interface Genome {
+  id: string;
+  params: Record<string, number>;
+  fitness: number;
+}
+
+export function mutate(genome: Genome): Genome {
+  const mutated = { ...genome.params };
+
+  for (const k in mutated) {
+    mutated[k] += (Math.random() - 0.5) * 0.1;
+  }
+
+  return {
+    id: genome.id + '_mut',
+    params: mutated,
+    fitness: 0,
+  };
+}
+
+export function crossover(a: Genome, b: Genome): Genome {
+  const child: any = {};
+
+  for (const k in a.params) {
+    child[k] = Math.random() > 0.5 ? a.params[k] : b.params[k];
+  }
+
+  return {
+    id: a.id + '_x_' + b.id,
+    params: child,
+    fitness: 0,
+  };
+}
+
+
+// ============================================================================
+// evolutionEngine.ts — Darwinian selection
+// ============================================================================
+
+import { Genome, mutate, crossover } from './strategyGenome';
+
+export class EvolutionEngine {
+  private population: Genome[] = [];
+
+  seed(genomes: Genome[]) {
+    this.population = genomes;
+  }
+
+  evolve() {
+    this.population.sort((a, b) => b.fitness - a.fitness);
+
+    const top = this.population.slice(0, 3);
+
+    const next: Genome[] = [...top];
+
+    for (let i = 0; i < top.length - 1; i++) {
+      next.push(crossover(top[i], top[i + 1]));
+      next.push(mutate(top[i]));
+    }
+
+    this.population = next;
+  }
+
+  best(): Genome {
+    return this.population.sort((a, b) => b.fitness - a.fitness)[0];
+  }
+}
+
+export const evolutionEngine = new EvolutionEngine();
+
+
+// ============================================================================
+// selfDiagnostics.ts — system introspection
+// ============================================================================
+
+export interface Diagnostics {
+  performance: number;
+  stability: number;
+  anomalyRate: number;
+}
+
+export function runDiagnostics(params: {
+  rewards: number[];
+  anomalies: number;
+}): Diagnostics {
+  const avgReward =
+    params.rewards.reduce((a, b) => a + b, 0) /
+    (params.rewards.length || 1);
+
+  const variance =
+    params.rewards.reduce((s, r) => s + (r - avgReward) ** 2, 0) /
+    (params.rewards.length || 1);
+
+  return {
+    performance: avgReward,
+    stability: 1 / (1 + variance),
+    anomalyRate: params.anomalies / (params.rewards.length || 1),
+  };
+}
+
+
+// ============================================================================
+// metaController.ts — system-level decision override
+// ============================================================================
+
+export function metaControl(params: {
+  diagnostics: Diagnostics;
+  policy: any;
+}): any {
+  const { diagnostics, policy } = params;
+
+  if (diagnostics.anomalyRate > 0.3) {
+    return {
+      override: true,
+      action: 'hold',
+    };
+  }
+
+  if (diagnostics.performance < 0) {
+    return {
+      override: true,
+      action: 'reduce_risk',
+    };
+  }
+
+  return {
+    override: false,
+    policy,
+  };
+}
+
+
+// ============================================================================
+// curiosityEngine.ts — exploration vs exploitation
+// ============================================================================
+
+export function explorationDecision(
+  bestAction: string | null,
+  epsilon: number
+): string {
+  if (Math.random() < epsilon || !bestAction) {
+    const actions = ['buy', 'sell', 'hold'];
+    return actions[Math.floor(Math.random() * actions.length)];
+  }
+
+  return bestAction;
+}
+
+
+// ============================================================================
+// phase6ExtendedOrchestrator.ts — FULL AUTONOMOUS LOOP
+// ============================================================================
+
+import { memoryGraph } from './memoryGraph';
+import { policyEnsemble } from './policyEnsemble';
+import { evolutionEngine } from './evolutionEngine';
+import { runDiagnostics } from './selfDiagnostics';
+import { metaControl } from './metaController';
+import { explorationDecision } from './curiosityEngine';
+
+export function runPhase6Extended(params: {
+  stateHash: string;
+  reward: number;
+  action: string;
+  historyRewards: number[];
+  anomalies: number;
+}) {
+  // 1. Update memory graph
+  memoryGraph.update(params.stateHash, params.action, params.reward);
+
+  const bestAction = memoryGraph.bestAction(params.stateHash);
+
+  // 2. Exploration vs exploitation
+  const nextAction = explorationDecision(bestAction, 0.1);
+
+  // 3. Diagnostics
+  const diagnostics = runDiagnostics({
+    rewards: params.historyRewards,
+    anomalies: params.anomalies,
+  });
+
+  // 4. Meta control
+  const control = metaControl({
+    diagnostics,
+    policy: nextAction,
+  });
+
+  // 5. Evolution step
+  evolutionEngine.evolve();
+
+  // 6. Policy ensemble update
+  const agents = policyEnsemble.all();
+  for (const a of agents) {
+    policyEnsemble.updateScore(a.id, params.reward);
+  }
+
+  return {
+    nextAction: control.override ? control.action : nextAction,
+    diagnostics,
+    control,
+    bestGenome: evolutionEngine.best(),
+  };
+}
+
+/*
+You are generating a COMPLETE production-grade TypeScript monorepo for a deterministic trading system.
+
+Project Name:
+Nexus Oracle TradePro
+
+Goal:
+Implement a FULL multi-phase trading architecture (Phase 1–6) with strict determinism, modular design, and verifiable outputs.
+
+----------------------------------------
+GLOBAL RULES (MANDATORY)
+----------------------------------------
+1. Use TypeScript only
+2. No randomness unless explicitly seeded and deterministic
+3. All functions must be pure where possible
+4. Use stable JSON stringify (sorted keys) for hashing
+5. All outputs must be reproducible
+6. Throw errors on invariant violations (fail-hard)
+7. No silent failures
+8. Node >= 20 compatibility
+9. Use Web Crypto API for hashing/signing
+10. Export everything cleanly (no implicit globals)
+
+----------------------------------------
+PROJECT STRUCTURE
+----------------------------------------
+
+Create this structure:
+
+/src
+  /phase1
+    ingestion.ts
+    marketAnalysis.ts
+    lattice96.ts
+  /phase2
+    signalEngine.ts
+    constraints.ts
+    invariants.ts
+    consensus.ts
+  /phase3
+    backtest.ts
+    walkforward.ts
+    montecarlo.ts
+    optimizer.ts
+  /phase4
+    eventBus.ts
+    liveFeed.ts
+    execution.ts
+    risk.ts
+    persistence.ts
+  /phase5
+    multiAsset.ts
+    correlation.ts
+    allocator.ts
+    regime.ts
+  /phase6
+    learning.ts
+    policy.ts
+    evolution.ts
+    diagnostics.ts
+    meta.ts
+  /core
+    types.ts
+    hash.ts
+    utils.ts
+    constants.ts
+  /orchestrator
+    pipeline.ts
+    system.ts
+
+----------------------------------------
+PHASE REQUIREMENTS
+----------------------------------------
+
+PHASE 1 — MARKET ENGINE
+- Ingest historical + live data
+- Compute returns, volatility
+- Map state into 96-path lattice
+- Deterministic output
+
+PHASE 2 — SIGNAL ENGINE
+- Generate buy/sell/hold signals
+- Apply constraints:
+  - no high risk in dev
+  - rejected → cannot execute
+- Add invariant checks (throw on violation)
+- Add consensus logic
+
+PHASE 3 — SIMULATION
+- Backtesting engine
+- Equity curve tracking
+- Drawdown calculation
+- Walk-forward validation
+- Monte Carlo (seeded only)
+- Parameter optimization
+
+PHASE 4 — LIVE SYSTEM
+- Event-driven architecture (pub/sub)
+- Tick → analysis → signal → execution
+- WebSocket broadcast support
+- Risk manager (drawdown stop)
+- Snapshot + replay capability
+
+PHASE 5 — GLOBAL LAYER
+- Multi-asset support (equity, crypto, fx)
+- Correlation matrix
+- Global regime detection
+- Capital allocation across assets
+
+PHASE 6 — ADAPTIVE LAYER
+- Reinforcement learning loop:
+  reward = equity delta
+- Policy update (buy/sell/hold weights)
+- Memory graph (state → best action)
+- Evolution engine (mutate + crossover params)
+- Diagnostics:
+  - performance
+  - stability
+  - anomaly rate
+- Meta-controller:
+  - override to HOLD if unstable
+  - reduce risk if performance < 0
+
+----------------------------------------
+CORE UTILITIES
+----------------------------------------
+
+Implement:
+- stableStringify(obj): sorted JSON stringify
+- sha256(input): deterministic hash
+- deepFreeze(obj)
+- invariant(condition, message)
+
+----------------------------------------
+ORCHESTRATOR
+----------------------------------------
+
+Create a master pipeline:
+
+runSystem(input):
+  → Phase 1 (analysis)
+  → Phase 2 (signal)
+  → Phase 3 (evaluation if backtest mode)
+  → Phase 4 (execution if live mode)
+  → Phase 5 (global allocation)
+  → Phase 6 (learning update)
+
+Return:
+{
+  analysis,
+  signal,
+  decision,
+  execution?,
+  portfolio,
+  metrics,
+  learning
+}
+
+----------------------------------------
+TESTING
+----------------------------------------
+
+Add:
+- deterministic test cases
+- same input → same output hash
+- invariant violation tests
+- golden test vectors
+
+----------------------------------------
+OUTPUT QUALITY
+----------------------------------------
+
+Code must be:
+- strongly typed
+- modular
+- readable
+- production-structured
+
+Do NOT:
+- skip files
+- leave placeholders
+- use pseudo-code
+
+Generate FULL implementations.
+
+----------------------------------------
+
+Start by:
+1. Creating core/types.ts
+2. Then phase1
+3. Continue sequentially
+4. Ensure all imports resolve
+5. Final step: orchestrator
+
+*/

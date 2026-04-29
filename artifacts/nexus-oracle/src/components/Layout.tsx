@@ -23,6 +23,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     { href: "/", label: "Console" },
     { href: "/lattice", label: "Lattice" },
     { href: "/verify", label: "Verify" },
+    { href: "/backtest", label: "Backtest" },
     { href: "/tradepro", label: "TradePro" },
     { href: "/markets", label: "Markets" },
     { href: "/codex", label: "Codex" },
