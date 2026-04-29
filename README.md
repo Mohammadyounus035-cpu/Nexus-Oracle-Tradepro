@@ -64,6 +64,15 @@ Monorepo with:
 └── tests/                   # Verification suite
 ```
 
+## TradePro 96-Path Engine Plan
+
+The TradePro engine upgrade plan is tracked in:
+
+- `docs/tradepro-96-path-implementation-plan.md`
+- `.github/prompts/tradepro-96-path-engine.prompt.md`
+
+Use the Copilot prompt to implement the phased TypeScript rewrite for global market ingestion, historical/live comparison, 96-path lattice mapping, risk-gated execution, canonical proof generation, and analytics.
+
 ## Installation
 
 ### Python Simulation
