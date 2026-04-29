@@ -22,6 +22,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   const navLinks = [
     { href: "/", label: "Console" },
     { href: "/lattice", label: "Lattice" },
+    { href: "/verify", label: "Verify" },
     { href: "/tradepro", label: "TradePro" },
     { href: "/markets", label: "Markets" },
     { href: "/codex", label: "Codex" },
@@ -34,27 +35,27 @@ export default function Layout({ children }: { children: ReactNode }) {
     <div className="min-h-screen flex flex-col text-foreground font-sans">
       {/* Top Header */}
       <header className="h-16 glass-panel rounded-none border-b border-primary/30 flex items-center justify-between px-6 z-50 sticky top-0">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3 min-w-0">
           <BrandMark />
-          <h1 className="font-serif font-bold text-lg tracking-widest neon-cyan">
-            NEXUS ORACLE <span className="opacity-50">·</span> TRADEPRO
+          <h1 className="font-serif font-bold text-base tracking-widest neon-cyan whitespace-nowrap hidden sm:block">
+            NEXUS ORACLE <span className="opacity-50 hidden md:inline">·</span><span className="hidden md:inline"> TRADEPRO</span>
           </h1>
           <div
-            className="hidden md:flex items-center gap-2 ml-3 pl-3 border-l border-primary/20"
+            className="hidden xl:flex items-center gap-2 ml-2 pl-3 border-l border-primary/20"
             data-testid="header-resonance"
           >
-            <ResonanceWave width={88} height={24} />
+            <ResonanceWave width={80} height={22} />
           </div>
         </div>
 
-        <nav className="flex items-center gap-1">
+        <nav className="flex items-center gap-0.5 overflow-x-auto">
           {navLinks.map((link) => {
             const isActive = location === link.href;
             return (
               <Link
                 key={link.href}
                 href={link.href}
-                className={`px-4 py-2 rounded-md font-mono text-sm transition-all duration-200 ${
+                className={`px-2.5 py-1.5 rounded-md font-mono text-xs transition-all duration-200 whitespace-nowrap ${
                   isActive 
                     ? "bg-primary/20 text-primary border border-primary/50 glow-text" 
                     : "text-muted-foreground hover:text-primary hover:bg-primary/10"
@@ -88,7 +89,7 @@ export default function Layout({ children }: { children: ReactNode }) {
       <NewsTicker />
 
       {/* Main Content */}
-      <main className="flex-1 relative overflow-hidden">
+      <main className="flex-1 relative overflow-y-auto overflow-x-hidden">
         {children}
       </main>
 

@@ -8,6 +8,7 @@ import Layout from "./components/Layout";
 import AlertOverlay from "./components/AlertOverlay";
 import Console from "./pages/Console";
 import Lattice from "./pages/Lattice";
+import Verify from "./pages/Verify";
 import TradePro from "./pages/TradePro";
 import Markets from "./pages/Markets";
 import Codex from "./pages/Codex";
@@ -22,6 +23,7 @@ function Router() {
       <Switch>
         <Route path="/" component={Console} />
         <Route path="/lattice" component={Lattice} />
+        <Route path="/verify" component={Verify} />
         <Route path="/tradepro" component={TradePro} />
         <Route path="/markets" component={Markets} />
         <Route path="/codex" component={Codex} />

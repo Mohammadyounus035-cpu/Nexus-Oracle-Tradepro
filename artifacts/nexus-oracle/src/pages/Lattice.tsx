@@ -8,6 +8,9 @@ import WebGLGuard from "../components/WebGLGuard";
 import IntegrityPanel from "../components/IntegrityPanel";
 import VerifyPipelinePanel from "../components/VerifyPipelinePanel";
 import OperatorModePanel from "../components/OperatorModePanel";
+import GoldenThreadPanel from "../components/GoldenThreadPanel";
+import MetricsHistoryCharts from "../components/MetricsHistoryCharts";
+import HashHistoryTable from "../components/HashHistoryTable";
 import { Shield, Zap, Diamond, Crosshair, Lock } from "lucide-react";
 
 interface ShellConfig {
@@ -110,7 +113,8 @@ function CentralIH() {
 
 export default function LatticePage() {
   return (
-    <div className="relative w-full h-[calc(100vh-6rem)] bg-background overflow-hidden" data-testid="page-lattice">
+    <div className="bg-background" data-testid="page-lattice">
+      <div className="relative w-full h-[calc(100vh-9rem)] min-h-[640px] max-h-[820px] overflow-hidden">
       <WebGLGuard>
       <Canvas camera={{ position: [0, 0, 30], fov: 50 }} gl={{ failIfMajorPerformanceCaveat: false, antialias: true }}>
         <ambientLight intensity={0.3} />
@@ -123,7 +127,7 @@ export default function LatticePage() {
         
         <OrbitControls enableZoom enableRotate enablePan={false} autoRotate autoRotateSpeed={0.3} />
         
-        <EffectComposer disableNormalPass>
+        <EffectComposer enableNormalPass={false}>
           <Bloom luminanceThreshold={0.1} mipmapBlur intensity={1.5} />
         </EffectComposer>
       </Canvas>
@@ -181,6 +185,14 @@ export default function LatticePage() {
             </GlassCard>
           ))}
         </div>
+      </div>
+      </div>
+
+      {/* Scrollable telemetry below the immersive 3D viewer */}
+      <div className="p-6 max-w-[1600px] mx-auto space-y-6">
+        <GoldenThreadPanel />
+        <MetricsHistoryCharts />
+        <HashHistoryTable />
       </div>
     </div>
   );

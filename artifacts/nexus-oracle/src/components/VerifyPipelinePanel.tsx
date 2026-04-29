@@ -1,9 +1,9 @@
-import { ChevronRight, Cpu, Play, FileCheck2, KeyRound, Radio, Save } from "lucide-react";
+import { ChevronRight, Cpu, Play, FileCheck2, KeyRound, Radio, Save, type LucideIcon } from "lucide-react";
 import GlassCard from "./GlassCard";
 import { useLatticeEngine } from "../lib/useLatticeEngine";
 import { PIPELINE_STAGES, PipelineStage, TICK_MS } from "../lib/latticeEngine";
 
-const ICONS: Record<PipelineStage, React.ComponentType<{ className?: string }>> = {
+const ICONS: Record<PipelineStage, LucideIcon> = {
   DECIDE: Cpu,
   EXECUTE: Play,
   VERIFY: FileCheck2,

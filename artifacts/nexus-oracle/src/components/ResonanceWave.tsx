@@ -14,7 +14,7 @@ export default function ResonanceWave({
   showLabel = true,
 }: ResonanceWaveProps) {
   const [phase, setPhase] = useState(0);
-  const raf = useRef<number>();
+  const raf = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     let last = performance.now();

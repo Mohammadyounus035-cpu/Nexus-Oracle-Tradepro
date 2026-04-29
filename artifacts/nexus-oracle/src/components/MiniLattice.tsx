@@ -69,7 +69,7 @@ export default function MiniLattice() {
         <NodeShell radius={1.5} count={12} color="#00e5c9" speed={0.4} />
         <NodeShell radius={2.2} count={24} color="#00ff88" speed={-0.3} />
         <NodeShell radius={3.0} count={36} color="#ccff00" speed={0.2} />
-        <EffectComposer disableNormalPass>
+        <EffectComposer enableNormalPass={false}>
           <Bloom luminanceThreshold={0.2} mipmapBlur intensity={1.5} />
         </EffectComposer>
       </Canvas>

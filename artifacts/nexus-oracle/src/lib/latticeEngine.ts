@@ -199,6 +199,67 @@ class LatticeEngine {
     return this.history[this.history.length - 1];
   }
 
+  // Most-stable node = energy closest to phiSync (0.618 target)
+  // Highest-influence node = most outbound links
+  computeGoldenThread(): string[] {
+    const s = this.state;
+    let mostStable = "";
+    let bestDelta = Infinity;
+    for (const n of Object.values(s.nodes)) {
+      const d = Math.abs(n.energy - s.phiSync);
+      if (d < bestDelta) {
+        bestDelta = d;
+        mostStable = n.id;
+      }
+    }
+    let highestInf = "";
+    let maxLinks = -1;
+    for (const n of Object.values(s.nodes)) {
+      if (n.links.length > maxLinks) {
+        maxLinks = n.links.length;
+        highestInf = n.id;
+      }
+    }
+    if (!mostStable || !highestInf || mostStable === highestInf) return [];
+    // BFS shortest path on undirected adjacency
+    const adj: Record<string, Set<string>> = {};
+    for (const id of Object.keys(s.nodes)) adj[id] = new Set();
+    for (const n of Object.values(s.nodes)) {
+      for (const l of n.links) {
+        adj[n.id]?.add(l);
+        adj[l]?.add(n.id);
+      }
+    }
+    const visited = new Set<string>([mostStable]);
+    const queue: { id: string; path: string[] }[] = [{ id: mostStable, path: [mostStable] }];
+    while (queue.length) {
+      const { id, path } = queue.shift()!;
+      if (id === highestInf) return path;
+      for (const next of adj[id]) {
+        if (!visited.has(next)) {
+          visited.add(next);
+          queue.push({ id: next, path: [...path, next] });
+        }
+      }
+    }
+    return [];
+  }
+
+  exportAnalysis() {
+    return {
+      version: "omega-v0.4.2",
+      generatedAt: new Date().toISOString(),
+      publicKey: this.publicKey,
+      currentTick: this.state.tick,
+      operatorMode: this.mode,
+      systemState: this.sysState,
+      canonicalState: this.state,
+      goldenThread: this.computeGoldenThread(),
+      history: this.history,
+      rollbacks: this.rollbacks,
+    };
+  }
+
   private async tick() {
     if (this.sysState === "STANDBY") return;
     const t0 = performance.now();
