@@ -5,6 +5,7 @@
 
 import { Position } from './state';
 import { Trade } from './engine';
+import { MarketLatticeState } from './lattice/types';
 
 export interface PerformanceMetrics {
   totalReturn: number;           // Percentage
@@ -28,9 +29,24 @@ export interface TimeSeriesPoint {
   invested: number;
 }
 
+export interface PathAnalyticsSnapshot {
+  fillsByPath: Record<string, number>;
+  notionalByPath: Record<string, number>;
+  rejectionsByReason: Record<string, number>;
+  riskBlocksByCheck: Record<string, number>;
+  regimePerformance: Record<string, number>;
+}
+
 export class AnalyticsEngine {
   private equityCurve: TimeSeriesPoint[] = [];
   private riskFreeRate = 2.0;     // Annual %, configurable
+  private pathAnalytics: PathAnalyticsSnapshot = {
+    fillsByPath: {},
+    notionalByPath: {},
+    rejectionsByReason: {},
+    riskBlocksByCheck: {},
+    regimePerformance: {},
+  };
 
   constructor() {}
 
@@ -100,6 +116,31 @@ export class AnalyticsEngine {
       avgWin: Math.round(avgWin),
       avgLoss: Math.round(avgLoss),
       expectancy: Math.round(expectancy)
+    };
+  }
+
+  recordLatticeFill(trade: Trade, lattice: MarketLatticeState): void {
+    const pathId = lattice.path.id;
+    this.pathAnalytics.fillsByPath[pathId] = (this.pathAnalytics.fillsByPath[pathId] || 0) + trade.qty;
+    this.pathAnalytics.notionalByPath[pathId] = (this.pathAnalytics.notionalByPath[pathId] || 0) + trade.qty * trade.price;
+    this.pathAnalytics.regimePerformance[lattice.regime] = (this.pathAnalytics.regimePerformance[lattice.regime] || 0) + trade.qty * trade.price;
+  }
+
+  recordRejection(reason: string): void {
+    this.pathAnalytics.rejectionsByReason[reason] = (this.pathAnalytics.rejectionsByReason[reason] || 0) + 1;
+  }
+
+  recordRiskBlock(checkId: string): void {
+    this.pathAnalytics.riskBlocksByCheck[checkId] = (this.pathAnalytics.riskBlocksByCheck[checkId] || 0) + 1;
+  }
+
+  getPathAnalytics(): PathAnalyticsSnapshot {
+    return {
+      fillsByPath: { ...this.pathAnalytics.fillsByPath },
+      notionalByPath: { ...this.pathAnalytics.notionalByPath },
+      rejectionsByReason: { ...this.pathAnalytics.rejectionsByReason },
+      riskBlocksByCheck: { ...this.pathAnalytics.riskBlocksByCheck },
+      regimePerformance: { ...this.pathAnalytics.regimePerformance },
     };
   }
 
@@ -249,5 +290,12 @@ export class AnalyticsEngine {
   // Clear history
   reset(): void {
     this.equityCurve = [];
+    this.pathAnalytics = {
+      fillsByPath: {},
+      notionalByPath: {},
+      rejectionsByReason: {},
+      riskBlocksByCheck: {},
+      regimePerformance: {},
+    };
   }
 }

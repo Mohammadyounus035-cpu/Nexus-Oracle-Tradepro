@@ -41,6 +41,18 @@ export interface RiskMetrics {
   warnings: string[];
 }
 
+export interface RiskCheck {
+  id: string;
+  status: 'pass' | 'warn' | 'block';
+  message: string;
+}
+
+export interface RiskDecision {
+  status: 'allow' | 'warn' | 'block';
+  checks: RiskCheck[];
+  maxExecutableQty: number;
+}
+
 // Volatility assumptions (annualized) for risk calculations
 const VOLATILITY_ASSUMPTIONS: Record<string, number> = {
   AAPL: 0.25,
@@ -154,6 +166,66 @@ export class RiskManager {
     return { 
       status: reasons.length > 0 ? 'warning' : 'allowed', 
       reasons 
+    };
+  }
+
+  evaluateOrder(
+    symbol: string,
+    side: OrderSide,
+    qty: number,
+    price: number,
+    portfolio?: Portfolio
+  ): RiskDecision {
+    const checks: RiskCheck[] = [];
+    const notional = qty * price;
+
+    checks.push({
+      id: 'positive-notional',
+      status: notional > 0 ? 'pass' : 'block',
+      message: notional > 0 ? 'Order notional is positive' : 'Order notional must be positive',
+    });
+
+    checks.push({
+      id: 'large-trade',
+      status: notional > this.config.largeTradeThreshold ? 'warn' : 'pass',
+      message: notional > this.config.largeTradeThreshold
+        ? `Large trade ${(notional / 100).toFixed(2)} exceeds threshold`
+        : 'Trade size below large-trade threshold',
+    });
+
+    if (portfolio) {
+      const metrics = this.calculateMetrics(portfolio);
+      checks.push({
+        id: 'drawdown',
+        status: metrics.status === 'red' ? 'block' : 'pass',
+        message: metrics.status === 'red' ? 'Trading halted: maximum drawdown exceeded' : 'Drawdown inside configured limit',
+      });
+
+      if (side === 'BUY' && portfolio.cash < notional) {
+        checks.push({
+          id: 'cash',
+          status: 'block',
+          message: 'Insufficient cash for requested order',
+        });
+      }
+
+      const position = portfolio.positions.get(symbol);
+      if (side === 'SELL' && (!position || position.shares < qty)) {
+        checks.push({
+          id: 'inventory',
+          status: 'block',
+          message: 'Insufficient shares for sell order',
+        });
+      }
+    }
+
+    const hasBlock = checks.some((check) => check.status === 'block');
+    const hasWarn = checks.some((check) => check.status === 'warn');
+
+    return {
+      status: hasBlock ? 'block' : hasWarn ? 'warn' : 'allow',
+      checks,
+      maxExecutableQty: hasBlock ? 0 : qty,
     };
   }
 }
