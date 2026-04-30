@@ -88,7 +88,7 @@ export class MarketDataEngine {
 // --- Trade Engine Types ---
 
 export type OrderSide = 'BUY' | 'SELL';
-export type OrderType = 'MARKET' | 'LIMIT' | 'STOP';
+export type OrderType = 'MARKET' | 'LIMIT' | 'STOP' | 'STOP_LIMIT';
 
 export interface Order {
   id: string;
@@ -99,7 +99,7 @@ export interface Order {
   limitPrice?: number;
   stopPrice?: number;
   timestamp: string;
-  status: 'PENDING' | 'FILLED' | 'CANCELLED';
+  status: 'PENDING' | 'PARTIAL' | 'FILLED' | 'CANCELLED' | 'REJECTED';
 }
 
 export interface Trade {
